@@ -36,7 +36,7 @@ class AccountPage extends StatelessWidget {
       ),
       const SizedBox(height: 14),
       Text(
-        'Semua barang masuk, kiriman, setoran, dan permintaan memerlukan persetujuan owner. Stok baru berpindah setelah disetujui dan diterima.',
+        'Semua barang masuk, kiriman, setoran, dan permintaan memerlukan persetujuan owner. Stok baru berpindah setelah disetujui dan diterima. Penjualan cabang langsung mengurangi stok cabang dan terlihat oleh owner.',
         textAlign: TextAlign.center,
         style: TextStyle(color: Colors.grey[700], fontSize: 12),
       ),

@@ -144,3 +144,78 @@ class StockRow {
         qty: toD(j['qty']),
       );
 }
+
+/// Satu catatan penjualan (atau pembatalannya) di cabang.
+class SaleEntry {
+  final int id;
+  final DateTime at;
+  final String location, kind, reason, byName, itemName, unit;
+  final double qty;
+  final int? refId;
+  SaleEntry({
+    required this.id,
+    required this.at,
+    required this.location,
+    required this.kind,
+    required this.reason,
+    required this.byName,
+    required this.itemName,
+    required this.unit,
+    required this.qty,
+    this.refId,
+  });
+  factory SaleEntry.fromJson(Map<String, dynamic> j) {
+    final it = j['items'] is Map ? Map<String, dynamic>.from(j['items'] as Map) : <String, dynamic>{};
+    return SaleEntry(
+      id: (j['id'] as num).toInt(),
+      at: DateTime.parse(j['at'] as String).toLocal(),
+      location: (j['location'] as String?) ?? '',
+      kind: (j['kind'] as String?) ?? 'jual',
+      reason: (j['reason'] as String?) ?? '',
+      byName: (j['by_name'] as String?) ?? '',
+      itemName: (it['name'] as String?) ?? '?',
+      unit: (it['unit'] as String?) ?? '',
+      qty: toD(j['delta']).abs(),
+      refId: j['ref_id'] == null ? null : (j['ref_id'] as num).toInt(),
+    );
+  }
+  bool get isCancel => kind == 'jual_batal';
+}
+
+/// Rekap harian per bahan per cabang (barang masuk vs terjual).
+class RekapRow {
+  final DateTime day;
+  final String location, itemId, name, unit, category;
+  final double masuk, terjual;
+  RekapRow({
+    required this.day,
+    required this.location,
+    required this.itemId,
+    required this.name,
+    required this.unit,
+    required this.category,
+    required this.masuk,
+    required this.terjual,
+  });
+  factory RekapRow.fromJson(Map<String, dynamic> j) => RekapRow(
+        day: DateTime.parse(j['hari'] as String),
+        location: j['location'] as String,
+        itemId: j['item_id'] as String,
+        name: (j['name'] as String?) ?? '?',
+        unit: (j['unit'] as String?) ?? '',
+        category: (j['category'] as String?) ?? '',
+        masuk: toD(j['masuk']),
+        terjual: toD(j['terjual']),
+      );
+}
+
+/// Jumlah rekap satu bahan pada rentang tanggal tertentu.
+class RekapSum {
+  final String itemId, name, unit, category;
+  double masuk = 0, terjual = 0;
+  RekapSum({required this.itemId, required this.name, required this.unit, required this.category});
+
+  /// Masuk dikurangi terjual. 0 = pas, positif = masih sisa, negatif = terjual lebih banyak dari yang masuk.
+  double get selisih => masuk - terjual;
+  bool get pas => selisih.abs() < 0.0001;
+}

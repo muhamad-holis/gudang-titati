@@ -7,6 +7,7 @@ import 'account_page.dart';
 import 'beranda_page.dart';
 import 'docs_page.dart';
 import 'master_page.dart';
+import 'sales_page.dart';
 import 'stock_page.dart';
 
 class HomeShell extends StatefulWidget {
@@ -58,6 +59,7 @@ class _HomeShellState extends State<HomeShell> {
     final tabs = <List<Object>>[
       [Icons.home_rounded, 'Beranda'],
       [Icons.description_outlined, 'Dokumen'],
+      [Icons.point_of_sale, 'Jual'],
       [Icons.inventory_2_outlined, 'Stok'],
       if (s.isOwner) [Icons.tune, 'Master'],
       [Icons.person_outline, 'Akun'],
@@ -65,6 +67,7 @@ class _HomeShellState extends State<HomeShell> {
     final pages = <Widget>[
       const BerandaPage(),
       const DocsPage(),
+      const SalesPage(),
       const StockPage(),
       if (s.isOwner) const MasterPage(),
       const AccountPage(),

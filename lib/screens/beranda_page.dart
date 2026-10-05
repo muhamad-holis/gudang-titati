@@ -6,6 +6,8 @@ import '../theme.dart';
 import '../utils.dart';
 import 'doc_form_page.dart';
 import 'docs_page.dart';
+import 'sales_form_page.dart';
+import 'sales_page.dart';
 
 class BerandaPage extends StatelessWidget {
   const BerandaPage({super.key});
@@ -58,6 +60,70 @@ class BerandaPage extends StatelessWidget {
         ),
       );
 
+  Widget _salesBtn(BuildContext context) => Expanded(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: FilledButton.icon(
+            style: FilledButton.styleFrom(backgroundColor: green, minimumSize: const Size.fromHeight(52)),
+            onPressed: () async {
+              final ok = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => const SalesFormPage()));
+              if (ok == true && context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Penjualan tersimpan dan terlihat oleh owner')));
+              }
+            },
+            icon: const Icon(Icons.point_of_sale, size: 20),
+            label: const Text('Catat Penjualan', textAlign: TextAlign.center),
+          ),
+        ),
+      );
+
+  /// Ringkasan penjualan hari ini per cabang (untuk owner).
+  Widget _salesCard(BuildContext context, AppState s) {
+    final branches = s.saleBranches;
+    if (branches.isEmpty) return const SizedBox.shrink();
+    final n = DateTime.now();
+    final today = DateTime(n.year, n.month, n.day);
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const SizedBox(height: 16),
+      const Text('Penjualan cabang hari ini', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+      const SizedBox(height: 6),
+      for (final b in branches)
+        Builder(builder: (_) {
+          final sums = s.rekapFor(b, today, today);
+          final sold = sums.where((x) => x.terjual > 0).length;
+          final diff = sums.where((x) => !x.pas).length;
+          return Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            decoration: cardDeco(),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(14),
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => SalesPage(initialBranch: b, standalone: true))),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(children: [
+                  Icon(sums.isEmpty ? Icons.hourglass_empty : (diff == 0 ? Icons.check_circle : Icons.info_outline),
+                      color: sums.isEmpty ? Colors.grey : (diff == 0 ? green : orange)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(b, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                      Text(
+                        sums.isEmpty
+                            ? 'Belum ada barang masuk atau terjual hari ini'
+                            : '$sold jenis terjual • ${diff == 0 ? 'semua pas' : '$diff barang ada selisih/sisa'}',
+                        style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                      ),
+                    ]),
+                  ),
+                  const Icon(Icons.chevron_right, color: Colors.grey),
+                ]),
+              ),
+            ),
+          );
+        }),
+    ]);
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
@@ -77,7 +143,7 @@ class BerandaPage extends StatelessWidget {
         buttons = Row(children: [_btn(context, Icons.soup_kitchen_outlined, 'Setor Hasil Produksi', 'setor_jadi')]);
         break;
       case 'cabang':
-        buttons = Row(children: [_btn(context, Icons.shopping_basket_outlined, 'Minta Bahan Jadi', 'minta_cabang')]);
+        buttons = Row(children: [_btn(context, Icons.shopping_basket_outlined, 'Minta Bahan Jadi', 'minta_cabang'), _salesBtn(context)]);
         break;
       default:
         buttons = const SizedBox.shrink();
@@ -116,6 +182,7 @@ class BerandaPage extends StatelessWidget {
             child: const Text('Tidak ada yang menunggu. Semua beres.', style: TextStyle(color: Colors.grey)),
           ),
         for (final d in tasks) DocCard(doc: d),
+        if (s.isOwner) _salesCard(context, s),
         const SizedBox(height: 16),
         const Text('Terbaru', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
         const SizedBox(height: 6),

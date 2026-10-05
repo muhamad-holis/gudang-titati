@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show Supabase, SupabaseClient, PostgrestException;
 import 'models.dart';
+import 'utils.dart';
 
 SupabaseClient get sb => Supabase.instance.client;
 
@@ -23,6 +24,9 @@ class AppState extends ChangeNotifier {
   List<Doc> docs = [];
   List<StockRow> stock = [];
   List<String> profileBranches = [];
+  List<SaleEntry> sales = [];
+  List<RekapRow> rekap = [];
+  String? salesError;
   Timer? _timer;
   bool _started = false;
   bool _refreshing = false;
@@ -52,6 +56,9 @@ class AppState extends ChangeNotifier {
     docs = [];
     stock = [];
     profileBranches = [];
+    sales = [];
+    rekap = [];
+    salesError = null;
   }
 
   Future<void> refresh({bool silent = false}) async {
@@ -83,6 +90,7 @@ class AppState extends ChangeNotifier {
         docs = [for (final e in ds) Doc.fromJson(Map<String, dynamic>.from(e))];
         final st = await sb.from('v_stock').select();
         stock = [for (final e in st) StockRow.fromJson(Map<String, dynamic>.from(e))];
+        await _loadSales();
         if (me!.role == 'owner') {
           final pr = await sb.from('profiles').select('branch, role');
           profileBranches = {
@@ -99,6 +107,25 @@ class AppState extends ChangeNotifier {
     _refreshing = false;
     loading = false;
     notifyListeners();
+  }
+
+  /// Data penjualan dimuat terpisah supaya aplikasi tetap jalan walau SQL penjualan belum dijalankan.
+  Future<void> _loadSales() async {
+    try {
+      final since = DateTime.now().subtract(const Duration(days: 62));
+      final rk = await sb.from('v_rekap_harian').select().gte('hari', '${since.year}-${two(since.month)}-${two(since.day)}');
+      rekap = [for (final e in rk) RekapRow.fromJson(Map<String, dynamic>.from(e))];
+      final sl = await sb
+          .from('stock_ledger')
+          .select('id, at, location, delta, kind, reason, by_name, ref_id, items(name, unit)')
+          .inFilter('kind', ['jual', 'jual_batal'])
+          .order('at', ascending: false)
+          .limit(600);
+      sales = [for (final e in sl) SaleEntry.fromJson(Map<String, dynamic>.from(e))];
+      salesError = null;
+    } catch (e) {
+      salesError = errText(e);
+    }
   }
 
   // ---------- bantu ----------
@@ -128,6 +155,37 @@ class AppState extends ChangeNotifier {
     }.toList()
       ..sort();
     return ['gudang', 'produksi', ...br];
+  }
+
+  /// Daftar cabang yang punya data penjualan / stok / permintaan.
+  List<String> get saleBranches {
+    final list = <String>{
+      ...locations.where((l) => l != 'gudang' && l != 'produksi' && l.isNotEmpty),
+      ...rekap.map((r) => r.location),
+    }.toList()
+      ..sort();
+    return list;
+  }
+
+  /// Rekap masuk vs terjual satu cabang pada rentang tanggal [from, to] (inklusif).
+  List<RekapSum> rekapFor(String branch, DateTime from, DateTime to) {
+    final m = <String, RekapSum>{};
+    for (final r in rekap) {
+      if (r.location != branch || r.day.isBefore(from) || r.day.isAfter(to)) continue;
+      final x = m.putIfAbsent(r.itemId, () => RekapSum(itemId: r.itemId, name: r.name, unit: r.unit, category: r.category));
+      x.masuk += r.masuk;
+      x.terjual += r.terjual;
+    }
+    return m.values.toList()..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+  }
+
+  /// Catatan penjualan satu cabang pada rentang tanggal.
+  List<SaleEntry> salesFor(String branch, DateTime from, DateTime to) {
+    return sales.where((e) {
+      if (e.location != branch) return false;
+      final d = DateTime(e.at.year, e.at.month, e.at.day);
+      return !d.isBefore(from) && !d.isAfter(to);
+    }).toList();
   }
 
   bool isSender(Doc d) =>
@@ -183,6 +241,16 @@ class AppState extends ChangeNotifier {
 
   Future<void> koreksiStok(String location, String itemId, double newQty, String reason) async {
     await sb.rpc('koreksi_stok', params: {'p_location': location, 'p_item': itemId, 'p_new_qty': newQty, 'p_reason': reason});
+    await refresh(silent: true);
+  }
+
+  Future<void> catatJual(String note, List<Map<String, dynamic>> lines) async {
+    await sb.rpc('catat_jual', params: {'p_lines': lines, 'p_note': note});
+    await refresh(silent: true);
+  }
+
+  Future<void> batalJual(int ledgerId) async {
+    await sb.rpc('batal_jual', params: {'p_ledger': ledgerId});
     await refresh(silent: true);
   }
 
