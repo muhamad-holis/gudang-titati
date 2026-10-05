@@ -69,7 +69,7 @@ class _SalesFormPageState extends State<SalesFormPage> {
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
     final branch = s.me?.branch ?? '';
-    final rows = s.stock.where((r) => r.location == branch && r.kind == 'jadi' && r.qty > 0).toList()
+    final rows = s.stock.where((r) => r.location == branch && s.sellable(r.itemId) && r.qty > 0).toList()
       ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
 
     return Scaffold(
@@ -88,7 +88,7 @@ class _SalesFormPageState extends State<SalesFormPage> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: cardDeco(),
-            child: const Text('Belum ada stok bahan jadi di cabang ini. Stok muncul setelah permintaan diterima.', style: TextStyle(color: Colors.grey)),
+            child: const Text('Belum ada stok barang di cabang ini. Stok muncul setelah permintaan diterima.', style: TextStyle(color: Colors.grey)),
           ),
         for (final r in rows)
           Container(

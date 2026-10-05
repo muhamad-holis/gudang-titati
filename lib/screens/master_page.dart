@@ -62,7 +62,7 @@ class _ItemsTab extends StatelessWidget {
                     dense: true,
                     onTap: () => editItemDialog(context, s, it),
                     title: Text(it.name, style: TextStyle(fontWeight: FontWeight.w700, color: it.active ? null : Colors.grey)),
-                    subtitle: Text('${it.category} • ${it.unit}${it.active ? '' : ' • nonaktif'}'),
+                    subtitle: Text('${it.category} • ${it.unit}${it.siapJual ? ' • siap jual' : ''}${it.active ? '' : ' • nonaktif'}'),
                     trailing: const Icon(Icons.edit_outlined, size: 18),
                   ),
                 );

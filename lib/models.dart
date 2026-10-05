@@ -14,7 +14,10 @@ class Profile {
 class Item {
   final String id, name, kind, category, unit;
   final bool active;
-  Item({required this.id, required this.name, required this.kind, required this.category, required this.unit, this.active = true});
+
+  /// Barang dagangan: dibeli jadi, dikirim gudang langsung ke cabang, tanpa produksi.
+  final bool siapJual;
+  Item({required this.id, required this.name, required this.kind, required this.category, required this.unit, this.active = true, this.siapJual = false});
   factory Item.fromJson(Map<String, dynamic> j) => Item(
         id: j['id'] as String,
         name: j['name'] as String,
@@ -22,6 +25,7 @@ class Item {
         category: (j['category'] as String?) ?? 'Lainnya',
         unit: (j['unit'] as String?) ?? 'pcs',
         active: (j['active'] as bool?) ?? true,
+        siapJual: (j['siap_jual'] as bool?) ?? false,
       );
 }
 

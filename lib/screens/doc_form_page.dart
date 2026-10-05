@@ -42,8 +42,8 @@ class _DocFormPageState extends State<DocFormPage> {
     super.dispose();
   }
 
-  Future<void> _add(String role, String kind, {String? stockLocation}) async {
-    final it = await pickItem(context, kind: kind, stockLocation: stockLocation);
+  Future<void> _add(String role, String kind, {String? stockLocation, bool sellable = false, bool noSiap = false}) async {
+    final it = await pickItem(context, kind: sellable ? null : kind, stockLocation: stockLocation, sellable: sellable, noSiap: noSiap);
     if (it == null || !mounted) return;
     if (lines.any((l) => l.item.id == it.id && l.role == role)) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bahan itu sudah ada di daftar')));
@@ -141,16 +141,16 @@ class _DocFormPageState extends State<DocFormPage> {
     );
   }
 
-  Widget _section(AppState s, String title, String role, String kind, {String? stockLoc, bool withPrice = false}) {
+  Widget _section(AppState s, String title, String role, String kind, {String? stockLoc, bool withPrice = false, bool sellable = false, bool noSiap = false}) {
     final mine = lines.where((l) => l.role == role).toList();
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Padding(padding: const EdgeInsets.fromLTRB(2, 14, 2, 8), child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800))),
       for (final l in mine) _lineTile(s, l, stockLoc: stockLoc, withPrice: withPrice),
       OutlinedButton.icon(
         style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(46)),
-        onPressed: () => _add(role, kind, stockLocation: stockLoc),
+        onPressed: () => _add(role, kind, stockLocation: stockLoc, sellable: sellable, noSiap: noSiap),
         icon: const Icon(Icons.add),
-        label: Text(kind == 'jadi' ? 'Tambah bahan jadi' : 'Tambah bahan mentah'),
+        label: Text(sellable ? 'Tambah barang' : (kind == 'jadi' ? 'Tambah bahan jadi' : 'Tambah bahan mentah')),
       ),
     ]);
   }
@@ -173,12 +173,12 @@ class _DocFormPageState extends State<DocFormPage> {
           TextField(controller: supplier, decoration: const InputDecoration(labelText: 'Nama grosir / supplier', border: OutlineInputBorder())),
           _section(s, 'Bahan yang dibeli', 'item', 'mentah', withPrice: true),
         ],
-        if (t == 'kirim_produksi') _section(s, 'Bahan mentah yang dikirim ke produksi', 'item', 'mentah', stockLoc: 'gudang'),
+        if (t == 'kirim_produksi') _section(s, 'Bahan mentah yang dikirim ke produksi', 'item', 'mentah', stockLoc: 'gudang', noSiap: true),
         if (t == 'setor_jadi') ...[
-          _section(s, 'Bahan mentah yang dipakai', 'pakai', 'mentah', stockLoc: 'produksi'),
+          _section(s, 'Bahan mentah yang dipakai', 'pakai', 'mentah', stockLoc: 'produksi', noSiap: true),
           _section(s, 'Hasil jadi yang disetor', 'hasil', 'jadi'),
         ],
-        if (t == 'minta_cabang') _section(s, 'Bahan jadi yang diminta', 'item', 'jadi'),
+        if (t == 'minta_cabang') _section(s, 'Barang yang diminta (bahan jadi / siap jual)', 'item', 'jadi', sellable: true),
         const SizedBox(height: 14),
         TextField(
           controller: note,

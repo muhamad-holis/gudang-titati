@@ -91,7 +91,8 @@ class _StockPageState extends State<StockPage> {
         final c = a.category.compareTo(b.category);
         return c != 0 ? c : a.name.compareTo(b.name);
       });
-    final mentah = rows.where((r) => r.kind == 'mentah').toList();
+    final siap = rows.where((r) => s.isSiapJual(r.itemId)).toList();
+    final mentah = rows.where((r) => r.kind == 'mentah' && !s.isSiapJual(r.itemId)).toList();
     final jadi = rows.where((r) => r.kind == 'jadi').toList();
 
     Widget tile(StockRow r) => Container(
@@ -163,6 +164,7 @@ class _StockPageState extends State<StockPage> {
             child: rows.isEmpty
                 ? ListView(children: [Padding(padding: const EdgeInsets.all(40), child: Center(child: Text('Stok ${locLabel(cur)} kosong', style: const TextStyle(color: Colors.grey))))])
                 : ListView(padding: const EdgeInsets.fromLTRB(12, 0, 12, 90), children: [
+                    if (siap.isNotEmpty) ...[head('Barang siap jual', siap.length), for (final r in siap) tile(r)],
                     if (mentah.isNotEmpty) ...[head('Bahan mentah', mentah.length), for (final r in mentah) tile(r)],
                     if (jadi.isNotEmpty) ...[head('Bahan jadi', jadi.length), for (final r in jadi) tile(r)],
                   ]),

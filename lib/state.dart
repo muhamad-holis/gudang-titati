@@ -136,6 +136,21 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
+  Item? itemById(String id) {
+    for (final i in items) {
+      if (i.id == id) return i;
+    }
+    return null;
+  }
+
+  bool isSiapJual(String itemId) => itemById(itemId)?.siapJual ?? false;
+
+  /// Bisa diminta cabang dan dijual cabang: bahan jadi atau barang siap jual.
+  bool sellable(String itemId) {
+    final i = itemById(itemId);
+    return i != null && (i.kind == 'jadi' || i.siapJual);
+  }
+
   List<Item> itemsOf(String kind) => items.where((i) => i.kind == kind && i.active).toList();
 
   double stockAt(String location, String itemId) {
@@ -260,16 +275,23 @@ class AppState extends ChangeNotifier {
   }
 
   // ---------- master data ----------
-  Future<Item> addItem(String name, String kind, String category, String unit) async {
-    final r = await sb.from('items').insert({'name': name.trim(), 'kind': kind, 'category': category.trim(), 'unit': unit.trim()}).select().single();
+  Future<Item> addItem(String name, String kind, String category, String unit, {bool siapJual = false}) async {
+    final r = await sb
+        .from('items')
+        .insert({'name': name.trim(), 'kind': kind, 'category': category.trim(), 'unit': unit.trim(), if (siapJual) 'siap_jual': true})
+        .select()
+        .single();
     final it = Item.fromJson(Map<String, dynamic>.from(r));
     items = [...items, it]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     notifyListeners();
     return it;
   }
 
-  Future<void> updateItem(String id, {required String name, required String category, required String unit, required bool active}) async {
-    await sb.from('items').update({'name': name.trim(), 'category': category.trim(), 'unit': unit.trim(), 'active': active}).eq('id', id);
+  Future<void> updateItem(String id, {required String name, required String category, required String unit, required bool active, bool? siapJual}) async {
+    await sb
+        .from('items')
+        .update({'name': name.trim(), 'category': category.trim(), 'unit': unit.trim(), 'active': active, if (siapJual != null) 'siap_jual': siapJual})
+        .eq('id', id);
     await refresh(silent: true);
   }
 

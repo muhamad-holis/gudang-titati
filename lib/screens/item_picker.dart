@@ -19,18 +19,20 @@ List<String> categoryChoices(AppState s, String kind) {
 }
 
 /// Pilih bahan (kind null = semua jenis).
-Future<Item?> pickItem(BuildContext context, {String? kind, String? stockLocation}) {
+/// sellable = hanya bahan jadi + barang siap jual. noSiap = sembunyikan barang siap jual.
+Future<Item?> pickItem(BuildContext context, {String? kind, String? stockLocation, bool sellable = false, bool noSiap = false}) {
   return showModalBottomSheet<Item>(
     context: context,
     isScrollControlled: true,
-    builder: (_) => _PickSheet(kind: kind, stockLocation: stockLocation),
+    builder: (_) => _PickSheet(kind: kind, stockLocation: stockLocation, sellable: sellable, noSiap: noSiap),
   );
 }
 
 class _PickSheet extends StatefulWidget {
   final String? kind;
   final String? stockLocation;
-  const _PickSheet({required this.kind, required this.stockLocation});
+  final bool sellable, noSiap;
+  const _PickSheet({required this.kind, required this.stockLocation, this.sellable = false, this.noSiap = false});
   @override
   State<_PickSheet> createState() => _PickSheetState();
 }
@@ -42,7 +44,13 @@ class _PickSheetState extends State<_PickSheet> {
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
-    final all = s.items.where((i) => i.active && (widget.kind == null || i.kind == widget.kind)).toList();
+    final all = s.items
+        .where((i) =>
+            i.active &&
+            (widget.kind == null || i.kind == widget.kind) &&
+            (!widget.sellable || i.kind == 'jadi' || i.siapJual) &&
+            (!widget.noSiap || !i.siapJual))
+        .toList();
     final cats = ['Semua', ...({...all.map((i) => i.category)}.toList()..sort())];
     final list = all.where((i) => (cat == 'Semua' || i.category == cat) && i.name.toLowerCase().contains(q.toLowerCase())).toList();
 
@@ -85,7 +93,7 @@ class _PickSheetState extends State<_PickSheet> {
                       final stk = widget.stockLocation == null ? null : s.stockAt(widget.stockLocation!, it.id);
                       return ListTile(
                         title: Text(it.name, style: const TextStyle(fontWeight: FontWeight.w600)),
-                        subtitle: Text('${it.category} • ${it.unit}${stk == null ? '' : ' • stok ${_f(stk)}'}'),
+                        subtitle: Text('${it.category} • ${it.unit}${it.siapJual ? ' • siap jual' : ''}${stk == null ? '' : ' • stok ${_f(stk)}'}'),
                         onTap: () => Navigator.pop(context, it),
                       );
                     },
@@ -117,6 +125,7 @@ Future<Item?> addItemDialog(BuildContext context, AppState s, {String? kind}) {
   final name = TextEditingController();
   final unit = TextEditingController(text: 'kg');
   var k = kind ?? 'mentah';
+  var siap = false;
   final cat = TextEditingController(text: k == 'jadi' ? 'Bahan jadi' : '');
   String? err;
   var saving = false;
@@ -140,6 +149,15 @@ Future<Item?> addItemDialog(BuildContext context, AppState s, {String? kind}) {
             const SizedBox(height: 8),
             TextField(controller: unit, decoration: const InputDecoration(labelText: 'Satuan')),
             _chipRow(_units, unit, setS),
+            if (k == 'mentah')
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                title: const Text('Barang siap jual', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                subtitle: const Text('Dikirim gudang langsung ke cabang tanpa produksi (mis. air mineral)', style: TextStyle(fontSize: 12)),
+                value: siap,
+                onChanged: (v) => setS(() => siap = v ?? false),
+              ),
             if (err != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(err!, style: const TextStyle(color: red))),
           ]),
         ),
@@ -158,7 +176,7 @@ Future<Item?> addItemDialog(BuildContext context, AppState s, {String? kind}) {
                       err = null;
                     });
                     try {
-                      final it = await s.addItem(name.text, k, cat.text, unit.text);
+                      final it = await s.addItem(name.text, k, cat.text, unit.text, siapJual: k == 'mentah' && siap);
                       if (d.mounted) Navigator.pop(d, it);
                     } catch (e) {
                       if (d.mounted) {
@@ -183,6 +201,7 @@ Future<bool?> editItemDialog(BuildContext context, AppState s, Item it) {
   final cat = TextEditingController(text: it.category);
   final unit = TextEditingController(text: it.unit);
   var active = it.active;
+  var siap = it.siapJual;
   String? err;
   var saving = false;
   return showDialog<bool>(
@@ -200,6 +219,14 @@ Future<bool?> editItemDialog(BuildContext context, AppState s, Item it) {
             TextField(controller: unit, decoration: const InputDecoration(labelText: 'Satuan')),
             _chipRow(_units, unit, setS),
             SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('Aktif (muncul di pilihan)'), value: active, onChanged: (v) => setS(() => active = v)),
+            if (it.kind == 'mentah')
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Barang siap jual'),
+                subtitle: const Text('Gudang kirim langsung ke cabang, tanpa produksi', style: TextStyle(fontSize: 12)),
+                value: siap,
+                onChanged: (v) => setS(() => siap = v),
+              ),
             if (err != null) Text(err!, style: const TextStyle(color: red)),
           ]),
         ),
@@ -215,7 +242,7 @@ Future<bool?> editItemDialog(BuildContext context, AppState s, Item it) {
                     }
                     setS(() => saving = true);
                     try {
-                      await s.updateItem(it.id, name: name.text, category: cat.text, unit: unit.text, active: active);
+                      await s.updateItem(it.id, name: name.text, category: cat.text, unit: unit.text, active: active, siapJual: (it.kind == 'mentah' && siap != it.siapJual) ? siap : null);
                       if (d.mounted) Navigator.pop(d, true);
                     } catch (e) {
                       if (d.mounted) {
