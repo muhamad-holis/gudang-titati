@@ -80,8 +80,8 @@ class _DocFormPageState extends State<DocFormPage> {
       error = null;
     });
     try {
-      await s.createDoc(widget.type, supplier.text.trim(), note.text.trim(), payload);
-      if (mounted) Navigator.pop(context, true);
+      final flagged = await s.createDoc(widget.type, supplier.text.trim(), note.text.trim(), payload);
+      if (mounted) Navigator.pop(context, flagged ? 'acc' : 'ok');
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -164,9 +164,14 @@ class _DocFormPageState extends State<DocFormPage> {
       body: ListView(padding: const EdgeInsets.all(12), children: [
         Container(
           padding: const EdgeInsets.all(10),
-          decoration: cardDeco(color: const Color(0xFFFFF4E0)),
-          child: const Text('Dokumen ini akan menunggu persetujuan owner. Stok baru berubah setelah disetujui.',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: orange)),
+          decoration: cardDeco(color: const Color(0xFFEAF2FF)),
+          child: Text(
+              t == 'masuk'
+                  ? 'Stok gudang langsung bertambah setelah disimpan. Owner memantau.'
+                  : (t == 'minta_cabang'
+                      ? 'Permintaan masuk ke gudang. Gudang akan mengirim sesuai stok yang ada.'
+                      : 'Setelah disimpan, barang dianggap terkirim dan stok pengirim berkurang. Penerima menekan Terima.'),
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: navy)),
         ),
         if (t == 'masuk') ...[
           const SizedBox(height: 12),
@@ -194,7 +199,7 @@ class _DocFormPageState extends State<DocFormPage> {
           style: FilledButton.styleFrom(backgroundColor: green, minimumSize: const Size.fromHeight(52)),
           onPressed: saving ? null : _submit,
           icon: saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.send),
-          label: const Text('Ajukan ke Owner'),
+          label: Text(t == 'masuk' ? 'Simpan Barang Masuk' : (t == 'minta_cabang' ? 'Kirim Permintaan' : 'Simpan & Kirim')),
         ),
         const SizedBox(height: 20),
       ]),

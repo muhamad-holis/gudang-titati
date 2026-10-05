@@ -61,7 +61,7 @@ class DocLine {
 }
 
 class Doc {
-  final String id, no, type, status, branch, supplier, note, ownerNote, createdBy, createdByName, approvedByName, receivedByName;
+  final String id, no, type, status, branch, supplier, note, ownerNote, createdBy, createdByName, approvedByName, receivedByName, ownerCheck, flagReason, verifiedByName;
   final DateTime createdAt;
   final DateTime? approvedAt, sentAt, receivedAt;
   final List<DocLine> lines;
@@ -78,6 +78,9 @@ class Doc {
     required this.createdByName,
     required this.approvedByName,
     required this.receivedByName,
+    this.ownerCheck = 'na',
+    this.flagReason = '',
+    this.verifiedByName = '',
     required this.createdAt,
     this.approvedAt,
     this.sentAt,
@@ -100,6 +103,9 @@ class Doc {
       createdByName: (j['created_by_name'] as String?) ?? '',
       approvedByName: (j['approved_by_name'] as String?) ?? '',
       receivedByName: (j['received_by_name'] as String?) ?? '',
+      ownerCheck: (j['owner_check'] as String?) ?? 'na',
+      flagReason: (j['flag_reason'] as String?) ?? '',
+      verifiedByName: (j['verified_by_name'] as String?) ?? '',
       createdAt: DateTime.parse(j['created_at'] as String).toLocal(),
       approvedAt: dt(j['approved_at']),
       sentAt: dt(j['sent_at']),
@@ -110,6 +116,9 @@ class Doc {
 
   /// Baris yang diterima di tujuan (untuk setoran: hanya hasil jadi).
   List<DocLine> get receivable => lines.where((l) => type != 'setor_jadi' || l.role == 'hasil').toList();
+
+  /// Barang Masuk yang harganya belum di-ACC owner.
+  bool get belumVerif => type == 'masuk' && (ownerCheck == 'belum' || ownerCheck == 'keberatan');
 
   bool get hasDiff => status == 'diterima' && receivable.any((l) => l.qtyReceived != null && (l.qtyReceived! - l.qty).abs() > 0.0001);
 

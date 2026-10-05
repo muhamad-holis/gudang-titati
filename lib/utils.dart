@@ -62,7 +62,7 @@ String statusLabel(String s) {
     case 'diajukan':
       return 'Menunggu ACC';
     case 'disetujui':
-      return 'Disetujui';
+      return 'Menunggu dikirim';
     case 'dikirim':
       return 'Dikirim';
     case 'diterima':

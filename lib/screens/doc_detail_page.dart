@@ -123,6 +123,18 @@ class _DocDetailPageState extends State<DocDetailPage> {
     await _run(() => s.ownerDecide(d.id, 'acc', note: note, lines: payload.isEmpty ? null : payload), 'Dokumen disetujui');
   }
 
+  Future<void> _verif(AppState s, Doc d) async {
+    final note = await _noteDialog('Verifikasi pembelian ini?', okText: 'ACC');
+    if (note == null) return;
+    await _run(() => s.verifyMasuk(d.id, 'acc', note: note), 'Pembelian diverifikasi');
+  }
+
+  Future<void> _keberatan(AppState s, Doc d) async {
+    final note = await _noteDialog('Keberatan atas pembelian ini?', required: true, label: 'Alasan (harga/jumlah)', okText: 'Kirim');
+    if (note == null) return;
+    await _run(() => s.verifyMasuk(d.id, 'keberatan', note: note), 'Keberatan dicatat');
+  }
+
   Future<void> _tolak(AppState s, Doc d) async {
     final note = await _noteDialog('Tolak dokumen ini?', required: true, label: 'Alasan penolakan', okText: 'Tolak');
     if (note == null) return;
@@ -142,7 +154,8 @@ class _DocDetailPageState extends State<DocDetailPage> {
   Future<void> _kirim(AppState s, Doc d) async {
     final extra = d.type == 'setor_jadi' ? ' Bahan yang dipakai akan dikurangi dari stok produksi.' : ' Stok pengirim akan dikurangi.';
     if (!await _confirm('Kirim sekarang?', 'Barang dianggap sudah dikirim.$extra', 'Kirim')) return;
-    await _run(() => s.sendDoc(d.id), 'Ditandai terkirim');
+    final payload = (editing && d.type == 'minta_cabang') ? _editPayload(d) : <Map<String, dynamic>>[];
+    await _run(() => s.sendDoc(d.id, lines: payload.isEmpty ? null : payload), 'Ditandai terkirim');
   }
 
   Future<void> _terima(AppState s, Doc d) async {
@@ -205,7 +218,7 @@ class _DocDetailPageState extends State<DocDetailPage> {
   }
 
   Future<void> _batal(AppState s, Doc d) async {
-    if (!await _confirm('Batalkan dokumen?', 'Dokumen ini dibatalkan dan tidak diproses owner.', 'Batalkan')) return;
+    if (!await _confirm('Batalkan dokumen?', 'Dokumen ini dibatalkan dan tidak akan diproses.', 'Batalkan')) return;
     await _run(() => s.cancelDoc(d.id), 'Dokumen dibatalkan');
   }
 
@@ -227,6 +240,13 @@ class _DocDetailPageState extends State<DocDetailPage> {
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(l.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+            if (d.type == 'minta_cabang' && d.status == 'disetujui' && context.read<AppState>().role == 'gudang')
+              Builder(builder: (_) {
+                final have = context.read<AppState>().stockAt('gudang', l.itemId);
+                final kurang = have < l.qty;
+                return Text('Stok gudang: ${fmtQty(have)} ${l.unit}${kurang ? ' (kurang)' : ''}',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: kurang ? red : green));
+              }),
             if (d.type == 'masuk' && l.price > 0) Text('${rp(l.price)} / ${l.unit} • total ${rp(l.price * l.qty)}', style: TextStyle(fontSize: 12, color: Colors.grey[700])),
             if (l.qtyReceived != null && (d.type != 'setor_jadi' || l.role == 'hasil') && d.type != 'masuk')
               Text('Diterima ${fmtQty(l.qtyReceived!)} ${l.unit}${diff ? '  (selisih ${fmtQty(l.qtyReceived! - l.qty)})' : ''}',
@@ -262,11 +282,13 @@ class _DocDetailPageState extends State<DocDetailPage> {
     }
 
     final canOwnerDecide = s.isOwner && d.status == 'diajukan';
+    final canVerify = s.isOwner && d.belumVerif;
     final canOwnerEdit = s.isOwner && d.status == 'disetujui';
     final canSend = d.status == 'disetujui' && d.type != 'masuk' && s.isSender(d);
     final canReceive = d.status == 'dikirim' && s.isReceiver(d);
-    final canCancel = d.status == 'diajukan' && s.isCreator(d);
-    final hasBar = canOwnerDecide || canOwnerEdit || canSend || canReceive || canCancel;
+    final canCancel = (d.status == 'diajukan' || (d.status == 'disetujui' && d.type == 'minta_cabang')) && s.isCreator(d);
+    final canGudangAdjust = s.role == 'gudang' && d.type == 'minta_cabang' && d.status == 'disetujui';
+    final hasBar = canVerify || canOwnerDecide || canOwnerEdit || canSend || canReceive || canCancel;
 
     Widget? bar;
     if (hasBar) {
@@ -282,6 +304,10 @@ class _DocDetailPageState extends State<DocDetailPage> {
               ),
             ),
           );
+      if (canVerify) {
+        if (d.ownerCheck == 'belum') buttons.add(fb('Keberatan', Icons.flag_outlined, () => _keberatan(s, d), c: red));
+        buttons.add(fb('ACC pembelian', Icons.check, () => _verif(s, d), c: green));
+      }
       if (canOwnerDecide) {
         if (editing) {
           buttons.add(fb('Batal ubah', Icons.close, () => setState(() => editing = false), c: Colors.grey));
@@ -300,7 +326,17 @@ class _DocDetailPageState extends State<DocDetailPage> {
           buttons.add(fb('Ubah jumlah', Icons.edit_outlined, () => _startEdit(d), c: navy2));
         }
       }
-      if (canSend) buttons.add(fb('Kirim', Icons.local_shipping_outlined, () => _kirim(s, d), c: blue));
+      if (canSend && canGudangAdjust) {
+        if (editing) {
+          buttons.add(fb('Batal', Icons.close, () => setState(() => editing = false), c: Colors.grey));
+          buttons.add(fb('Kirim jumlah ini', Icons.local_shipping_outlined, () => _kirim(s, d), c: blue));
+        } else {
+          buttons.add(fb('Sesuaikan jumlah', Icons.edit_outlined, () => _startEdit(d), c: navy2));
+          buttons.add(fb('Kirim', Icons.local_shipping_outlined, () => _kirim(s, d), c: blue));
+        }
+      } else if (canSend) {
+        buttons.add(fb('Kirim', Icons.local_shipping_outlined, () => _kirim(s, d), c: blue));
+      }
       if (canReceive) buttons.add(fb('Terima barang', Icons.inventory_outlined, () => _terima(s, d), c: green));
       if (canCancel) buttons.add(fb('Batalkan', Icons.cancel_outlined, () => _batal(s, d), c: red));
       bar = SafeArea(
@@ -336,6 +372,10 @@ class _DocDetailPageState extends State<DocDetailPage> {
             if (d.sentAt != null) _kv('Dikirim', tglJam(d.sentAt!)),
             if (d.receivedAt != null) _kv('Diterima', '${tglJam(d.receivedAt!)}${d.receivedByName.isEmpty ? '' : ' oleh ${d.receivedByName}'}'),
             if (total > 0) _kv('Total pembelian', rp(total)),
+            if (d.type == 'masuk')
+              _kv('Verifikasi owner', d.ownerCheck == 'ok' ? 'Sudah${d.verifiedByName.isEmpty ? '' : ' oleh ${d.verifiedByName}'}' : (d.ownerCheck == 'keberatan' ? 'Owner keberatan' : 'Belum diverifikasi owner'),
+                  color: d.ownerCheck == 'ok' ? green : (d.ownerCheck == 'keberatan' ? red : orange)),
+            if (d.flagReason.isNotEmpty) _kv('Menyimpang', d.flagReason, color: red),
             if (d.hasDiff) _kv('Selisih', 'Ada selisih jumlah diterima', color: red),
           ]),
         ),
@@ -344,7 +384,7 @@ class _DocDetailPageState extends State<DocDetailPage> {
             margin: const EdgeInsets.only(top: 10),
             padding: const EdgeInsets.all(10),
             decoration: cardDeco(color: const Color(0xFFFFF4E0)),
-            child: const Text('Ubah jumlah di bawah. Isi 0 untuk menghapus baris.', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: orange)),
+            child: Text(s.role == 'gudang' ? 'Kurangi jumlah sesuai stok. Isi 0 untuk tidak mengirim barang itu.' : 'Ubah jumlah di bawah. Isi 0 untuk menghapus baris.', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: orange)),
           ),
         if (d.type == 'setor_jadi') ...[
           _sectionTitle('Bahan mentah dipakai'),

@@ -34,12 +34,13 @@ class DocCard extends StatelessWidget {
               '${doc.no} • ${tglJam(doc.createdAt)} • ${doc.createdByName}${doc.branch.isEmpty ? '' : ' • ${doc.branch}'}',
               style: TextStyle(fontSize: 11, color: Colors.grey[700]),
             ),
-            if (act != null || doc.hasDiff)
+            if (act != null || doc.hasDiff || doc.belumVerif)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
                 child: Wrap(spacing: 8, children: [
                   if (act != null) Text('▶ $act', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: orange)),
                   if (doc.hasDiff) const Text('⚠ Ada selisih', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: red)),
+                  if (doc.belumVerif) Text(doc.ownerCheck == 'keberatan' ? '⚠ Owner keberatan' : 'Belum diverifikasi owner', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: doc.ownerCheck == 'keberatan' ? red : orange)),
                 ]),
               ),
           ]),
@@ -59,7 +60,7 @@ class _DocsPageState extends State<DocsPage> {
   String status = 'semua';
   String type = 'semua';
 
-  static const statuses = ['semua', 'diajukan', 'disetujui', 'dikirim', 'diterima', 'ditolak', 'selisih'];
+  static const statuses = ['semua', 'diajukan', 'disetujui', 'dikirim', 'diterima', 'ditolak', 'selisih', 'belum_verif'];
   static const types = ['semua', 'masuk', 'kirim_produksi', 'setor_jadi', 'minta_cabang'];
 
   Widget _chips(List<String> values, String current, String Function(String) label, ValueChanged<String> onPick) {
@@ -91,13 +92,14 @@ class _DocsPageState extends State<DocsPage> {
     final list = s.docs.where((d) {
       if (type != 'semua' && d.type != type) return false;
       if (status == 'selisih') return d.hasDiff;
+      if (status == 'belum_verif') return d.belumVerif;
       if (status != 'semua' && d.status != status) return false;
       return true;
     }).toList();
 
     return Column(children: [
       const SizedBox(height: 10),
-      _chips(statuses, status, (v) => v == 'semua' ? 'Semua status' : (v == 'selisih' ? 'Ada selisih' : statusLabel(v)), (v) => setState(() => status = v)),
+      _chips(statuses, status, (v) => v == 'semua' ? 'Semua status' : (v == 'selisih' ? 'Ada selisih' : (v == 'belum_verif' ? 'Belum diverifikasi' : statusLabel(v))), (v) => setState(() => status = v)),
       const SizedBox(height: 4),
       _chips(types, type, (v) => v == 'semua' ? 'Semua jenis' : typeLabel(v), (v) => setState(() => type = v)),
       const SizedBox(height: 6),

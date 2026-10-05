@@ -20,16 +20,18 @@ Hasil cek harus menampilkan 6 baris dengan peran yang benar.
   - `SUPABASE_ANON_KEY` = anon public key (project gudang)
 - Build berjalan otomatis; APK ada di Actions -> Artifacts. Tag `v*` juga membuat Release.
 
-## 4. Alur pemakaian
-1. Kepala gudang: Barang Masuk (dari grosir) -> menunggu ACC owner -> stok gudang bertambah.
-2. Kepala gudang: Kirim ke Produksi -> ACC owner -> Kirim -> kepala produksi Terima.
-3. Kepala produksi: Setor Hasil Produksi (bahan dipakai + hasil jadi) -> ACC owner -> Kirim -> kepala gudang Terima.
-4. Cabang: Minta Bahan Jadi -> ACC owner (boleh ubah jumlah / tolak dengan alasan) -> gudang Kirim -> cabang Terima.
-5. Owner: melihat semua dokumen & stok, ACC / ubah jumlah / tolak, koreksi stok (tercatat alasannya),
-   kelola bahan mentah, bahan jadi, dan kategori di tab Master.
+## 4. Alur pemakaian (ACC owner selektif)
+1. Kepala gudang: Barang Masuk (dari grosir) -> stok langsung bertambah, dokumen "Belum diverifikasi owner" sampai di-ACC (tombol "ACC semua pembelian" ada di Beranda owner; hanya untuk Barang Masuk).
+2. Kepala gudang: Kirim ke Produksi -> langsung terkirim -> kepala produksi Terima.
+3. Kepala produksi: Setor Hasil Produksi -> kalau hasil wajar langsung terkirim -> kepala gudang Terima. Kalau jauh dari biasanya -> Menunggu ACC owner (stok belum bergerak).
+4. Cabang: Minta Bahan Jadi -> antre di gudang (kalau jumlah jauh di atas biasanya: menunggu ACC owner dulu) -> gudang boleh mengurangi jumlah sesuai stok lalu Kirim -> cabang Terima.
+5. Cabang: Catat Penjualan (tab Jual hanya tampil di akun cabang).
+6. Owner: memantau semua dokumen, stok, dan penjualan. Beranda owner menampilkan "Perlu dipantau" (selisih terima / tertahan > 24 jam). Owner tetap bisa koreksi stok (wajib alasan) dan kelola Master.
+
+> Jalankan `supabase_update_alur_tanpa_acc.sql`, lalu `supabase_update_acc_selektif.sql`, SETELAH tiga file SQL lainnya. Batas "menyimpang" (toleransi 20%, kelipatan 2x, min. 3 data lama) ada di tabel `app_settings`. Dokumen menyimpang (setoran/permintaan cabang) selalu diputuskan owner satu per satu. Dokumen lama berstatus "Menunggu ACC" tetap bisa di-ACC owner.
 
 ## Aturan penting
-- Stok baru berpindah hanya setelah owner ACC dan penerima menekan Terima.
+- Stok pengirim berkurang saat dikirim; stok penerima bertambah hanya setelah penerima menekan Terima.
 - Jumlah diterima bisa lebih kecil dari yang dikirim; selisih tercatat dan ditandai merah untuk owner.
 - Semua aksi tercatat (siapa, kapan) di bagian Riwayat tiap dokumen.
 - Daftar bahan baru bisa ditambah langsung saat membuat dokumen; owner bisa mengubah/menonaktifkan di tab Master.
