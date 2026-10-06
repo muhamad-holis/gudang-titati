@@ -6,18 +6,18 @@ import '../theme.dart';
 import '../utils.dart';
 import 'sales_form_page.dart';
 
-class SelisihChip extends StatelessWidget {
-  final double selisih;
+/// Sisa stok di cabang saat ini. Hijau jika masih ada, abu-abu jika habis.
+class SisaChip extends StatelessWidget {
+  final double sisa;
   final String unit;
-  const SelisihChip({super.key, required this.selisih, required this.unit});
+  const SisaChip({super.key, required this.sisa, required this.unit});
 
   @override
   Widget build(BuildContext context) {
-    final pas = selisih.abs() < 0.0001;
-    final plus = selisih > 0;
-    final text = pas ? 'Pas' : (plus ? 'Sisa ${fmtQty(selisih)} $unit' : 'Lebih ${fmtQty(-selisih)} $unit');
-    final bg = pas ? const Color(0xFFDCF5E3) : (plus ? const Color(0xFFFFF4E0) : const Color(0xFFFDE8E8));
-    final fg = pas ? const Color(0xFF14753A) : (plus ? orange : red);
+    final ada = sisa > 0.0001;
+    final text = ada ? 'Sisa ${fmtQty(sisa)} $unit' : 'Habis';
+    final bg = ada ? const Color(0xFFDCF5E3) : const Color(0xFFEDEDED);
+    final fg = ada ? const Color(0xFF14753A) : const Color(0xFF555555);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
@@ -127,8 +127,7 @@ class _SalesPageState extends State<SalesPage> {
     final sums = cur == null ? <RekapSum>[] : s.rekapFor(cur, range[0], range[1]);
     final hist = cur == null ? <SaleEntry>[] : s.salesFor(cur, range[0], range[1]);
     final canceled = <int>{for (final e in s.sales) if (e.isCancel && e.refId != null) e.refId!};
-    final pasCount = sums.where((x) => x.pas).length;
-    final diffCount = sums.length - pasCount;
+    final kurang = cur == null ? <KurangRow>[] : s.kurangFor(cur, range[0], range[1]);
     final now = DateTime.now();
 
     Widget sumTile(RekapSum x) {
@@ -140,15 +139,13 @@ class _SalesPageState extends State<SalesPage> {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Expanded(child: Text(x.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15))),
-            SelisihChip(selisih: x.selisih, unit: x.unit),
+            SisaChip(sisa: stok, unit: x.unit),
           ]),
           const SizedBox(height: 6),
           Row(children: [
             Expanded(child: Text('Masuk: ${fmtQty(x.masuk)} ${x.unit}', style: const TextStyle(fontSize: 13))),
             Expanded(child: Text('Terjual: ${fmtQty(x.terjual)} ${x.unit}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700))),
           ]),
-          const SizedBox(height: 2),
-          Text('Stok di cabang sekarang: ${fmtQty(stok)} ${x.unit}', style: TextStyle(fontSize: 12, color: Colors.grey[700])),
         ]),
       );
     }
@@ -212,18 +209,35 @@ class _SalesPageState extends State<SalesPage> {
                   Text('${locLabel(cur)} • ${_periodLabel(period)}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
                   const SizedBox(height: 4),
                   Text(
-                    sums.isEmpty
-                        ? 'Belum ada barang masuk atau terjual pada periode ini'
-                        : '${sums.length} jenis barang • $pasCount pas${diffCount > 0 ? ' • $diffCount ada selisih' : ''}',
-                    style: TextStyle(fontSize: 13, color: diffCount > 0 ? orange : Colors.grey[700], fontWeight: FontWeight.w600),
+                    sums.isEmpty && kurang.isEmpty ? 'Belum ada barang masuk atau terjual pada periode ini' : '${sums.length} jenis barang',
+                    style: TextStyle(fontSize: 13, color: Colors.grey[700], fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Selisih = barang masuk dikurangi terjual. Pas = sama. Sisa = masih ada di cabang. Lebih = terjual melebihi yang masuk pada periode ini (memakai stok sebelumnya).',
+                    'Masuk = barang dari gudang yang sudah diterima. Sisa = stok di cabang sekarang.',
                     style: TextStyle(fontSize: 11, color: Colors.grey[600]),
                   ),
                 ]),
               ),
+              if (kurang.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: cardDeco(color: const Color(0xFFFDE8E8)),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    const Text('Barang kurang diterima', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: red)),
+                    const SizedBox(height: 4),
+                    for (final k in kurang)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          '${k.name}: kurang ${fmtQty(k.kurang)} ${k.unit} (dikirim ${fmtQty(k.dikirim)}, diterima ${fmtQty(k.diterima)})',
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: red),
+                        ),
+                      ),
+                  ]),
+                ),
+              ],
               const SizedBox(height: 10),
               for (final x in sums) sumTile(x),
               const Padding(padding: EdgeInsets.fromLTRB(2, 12, 2, 6), child: Text('Riwayat input penjualan', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800))),

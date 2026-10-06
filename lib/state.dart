@@ -213,6 +213,24 @@ class AppState extends ChangeNotifier {
     return m.values.toList()..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
   }
 
+  /// Barang yang kurang diterima satu cabang (dikirim gudang lebih banyak dari yang diterima), berdasarkan tanggal terima.
+  List<KurangRow> kurangFor(String branch, DateTime from, DateTime to) {
+    final m = <String, KurangRow>{};
+    for (final d in docs) {
+      if (d.type != 'minta_cabang' || d.branch != branch || d.status != 'diterima' || d.receivedAt == null) continue;
+      final r = d.receivedAt!;
+      final day = DateTime(r.year, r.month, r.day);
+      if (day.isBefore(from) || day.isAfter(to)) continue;
+      for (final l in d.lines) {
+        if (l.qtyReceived == null || l.qty - l.qtyReceived! <= 0.0001) continue;
+        final x = m.putIfAbsent(l.itemId, () => KurangRow(itemId: l.itemId, name: l.name, unit: l.unit));
+        x.dikirim += l.qty;
+        x.diterima += l.qtyReceived!;
+      }
+    }
+    return m.values.toList()..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+  }
+
   /// Catatan penjualan satu cabang pada rentang tanggal.
   List<SaleEntry> salesFor(String branch, DateTime from, DateTime to) {
     return sales.where((e) {

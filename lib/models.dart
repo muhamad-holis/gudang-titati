@@ -246,6 +246,14 @@ class RekapRow {
       );
 }
 
+/// Barang yang diterima cabang lebih sedikit dari yang dikirim gudang (pada rentang tanggal tertentu).
+class KurangRow {
+  final String itemId, name, unit;
+  double dikirim = 0, diterima = 0;
+  KurangRow({required this.itemId, required this.name, required this.unit});
+  double get kurang => dikirim - diterima;
+}
+
 /// Jumlah rekap satu bahan pada rentang tanggal tertentu.
 class RekapSum {
   final String itemId, name, unit, category;

@@ -104,7 +104,7 @@ class BerandaPage extends StatelessWidget {
         Builder(builder: (_) {
           final sums = s.rekapFor(b, today, today);
           final sold = sums.where((x) => x.terjual > 0).length;
-          final diff = sums.where((x) => !x.pas).length;
+          final kurang = s.kurangFor(b, today, today);
           return Container(
             margin: const EdgeInsets.only(bottom: 8),
             decoration: cardDeco(),
@@ -114,17 +114,17 @@ class BerandaPage extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.all(12),
                 child: Row(children: [
-                  Icon(sums.isEmpty ? Icons.hourglass_empty : (diff == 0 ? Icons.check_circle : Icons.info_outline),
-                      color: sums.isEmpty ? Colors.grey : (diff == 0 ? green : orange)),
+                  Icon(kurang.isNotEmpty ? Icons.warning_amber_rounded : (sums.isEmpty ? Icons.hourglass_empty : Icons.check_circle),
+                      color: kurang.isNotEmpty ? red : (sums.isEmpty ? Colors.grey : green)),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text(b, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
                       Text(
-                        sums.isEmpty
-                            ? 'Belum ada barang masuk atau terjual hari ini'
-                            : '$sold jenis terjual • ${diff == 0 ? 'semua pas' : '$diff barang ada selisih/sisa'}',
-                        style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                        kurang.isNotEmpty
+                            ? 'Ada barang kurang diterima: ${kurang.length} jenis'
+                            : (sums.isEmpty ? 'Belum ada barang masuk atau terjual hari ini' : (sold == 0 ? 'Belum ada yang terjual hari ini' : '$sold jenis barang terjual hari ini')),
+                        style: TextStyle(fontSize: 12, color: kurang.isNotEmpty ? red : Colors.grey[700], fontWeight: kurang.isNotEmpty ? FontWeight.w700 : FontWeight.w400),
                       ),
                     ]),
                   ),

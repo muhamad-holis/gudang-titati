@@ -28,7 +28,7 @@ ACC owner hanya dipasang di titik yang menyangkut uang atau tidak bisa dicek ora
 3. **Setor Hasil Produksi (ACC hanya jika menyimpang)**: hasil jadi dihitung kembali ke bahan mentah lewat *rendemen standar* tiap bahan jadi. Jika bahan yang dipakai berbeda dari perhitungan lebih dari toleransi (bawaan 15%), setoran menunggu ACC owner dan stok belum bergerak. Jika wajar, langsung terkirim dan kepala gudang Terima. Bahan jadi yang belum punya standar rendemen selalu minta ACC.
 4. **Permintaan Cabang (tanpa ACC, kecuali jauh di atas biasanya)**: antre di gudang, gudang boleh mengurangi jumlah sesuai stok lalu Kirim, cabang Terima. Jika jumlah satu barang lebih dari 2 kali rata-rata permintaan cabang itu dalam 28 hari terakhir (minimal 3 permintaan sebelumnya), menunggu ACC owner.
 5. **Terima barang (tanpa ACC)**: penerima menghitung fisik; selisih otomatis tampil merah di owner.
-6. Cabang: Catat Penjualan (tab Jual hanya tampil di akun cabang). Pembatalan catatan penjualan hari lain hanya bisa dilakukan owner.
+6. Cabang: Catat Penjualan (tab Jual hanya tampil di akun cabang). Rekap penjualan menampilkan per barang: Masuk, Terjual, dan Sisa (stok cabang sekarang). Kotak merah "Barang kurang diterima" muncul hanya jika barang yang diterima cabang lebih sedikit dari yang dikirim gudang. Pembatalan catatan penjualan hari lain hanya bisa dilakukan owner.
 7. Owner: memantau semua dokumen, stok, dan penjualan. Beranda owner menampilkan "Perlu dipantau" (selisih terima / tertahan > 24 jam). Koreksi stok hanya owner (wajib alasan).
 
 ### Langkah setelah SQL update
