@@ -31,6 +31,13 @@ ACC owner hanya dipasang di titik yang menyangkut uang atau tidak bisa dicek ora
 6. Cabang: Catat Penjualan (tab Jual hanya tampil di akun cabang). Rekap penjualan menampilkan per barang: Masuk, Terjual, dan Sisa (stok cabang sekarang). Kotak merah "Barang kurang diterima" muncul hanya jika barang yang diterima cabang lebih sedikit dari yang dikirim gudang. Pembatalan catatan penjualan hari lain hanya bisa dilakukan owner.
 7. Owner: memantau semua dokumen, stok, dan penjualan. Beranda owner menampilkan "Perlu dipantau" (selisih terima / tertahan > 24 jam). Koreksi stok hanya owner (wajib alasan).
 
+### Nota / faktur
+Tiap dokumen punya nota. Buka dokumen, lalu ketuk tombol "Lihat faktur/surat jalan" atau ikon nota di pojok kanan atas.
+- Barang Masuk tampil sebagai *Faktur Pembelian* (harga, subtotal, total, cap status verifikasi owner, tanda tangan kepala gudang dan owner).
+- Permintaan cabang tampil sebagai *Surat Jalan*; kirim ke produksi dan setor hasil sebagai *Bukti Serah Terima*. Kolomnya Dikirim, Diterima, Kurang (baris yang kurang berwarna merah), tanpa harga.
+- Tombol *Bagikan PDF* mengirim nota lewat WhatsApp/email atau menyimpannya; tombol *Cetak* memakai menu cetak Android.
+- Memakai paket Flutter `pdf` dan `printing`; tidak ada perubahan SQL.
+
 ### Langkah setelah SQL update
 - Jalankan `supabase_update_acc_selektif.sql` SETELAH `supabase_update_alur_tanpa_acc.sql` (urutan: setup, penjualan, siap_jual, alur_tanpa_acc, acc_selektif). Aman diulang.
 - Login Owner -> Master -> Bahan jadi -> ketuk tiap bahan -> isi *Rendemen standar* (hasil jadi per 1 satuan bahan mentah, mis. 10 kg jadi 12 kg: isi 1,2). Satuan bahan yang dipakai pada setoran sebaiknya sama (mis. semua kg).

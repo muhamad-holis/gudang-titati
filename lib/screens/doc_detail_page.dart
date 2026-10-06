@@ -4,6 +4,7 @@ import '../models.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../utils.dart';
+import 'nota_page.dart';
 
 class DocDetailPage extends StatefulWidget {
   final String docId;
@@ -212,6 +213,8 @@ class _DocDetailPageState extends State<DocDetailPage> {
     await _run(() => s.cancelDoc(d.id), 'Dokumen dibatalkan');
   }
 
+  void _bukaNota(Doc d) => Navigator.push(context, MaterialPageRoute(builder: (_) => NotaPage(docId: d.id)));
+
   Widget _kv(String a, String b, {Color? color}) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 3),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -337,7 +340,12 @@ class _DocDetailPageState extends State<DocDetailPage> {
     final total = d.type == 'masuk' ? d.lines.fold<double>(0, (a, l) => a + l.price * l.qty) : 0.0;
 
     return Scaffold(
-      appBar: AppBar(title: Text(d.no), backgroundColor: navy, foregroundColor: Colors.white),
+      appBar: AppBar(
+        title: Text(d.no),
+        backgroundColor: navy,
+        foregroundColor: Colors.white,
+        actions: [IconButton(tooltip: 'Lihat nota', icon: const Icon(Icons.receipt_long), onPressed: () => _bukaNota(d))],
+      ),
       bottomNavigationBar: bar,
       body: ListView(padding: const EdgeInsets.all(12), children: [
         Container(
@@ -365,6 +373,16 @@ class _DocDetailPageState extends State<DocDetailPage> {
             if (d.hasDiff) _kv('Selisih', 'Ada selisih jumlah diterima', color: red),
           ]),
         ),
+        if (!editing)
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(46), backgroundColor: Colors.white),
+              onPressed: () => _bukaNota(d),
+              icon: const Icon(Icons.receipt_long, size: 20),
+              label: Text(d.type == 'masuk' ? 'Lihat faktur, bagikan atau cetak' : 'Lihat surat jalan, bagikan atau cetak'),
+            ),
+          ),
         if (editing)
           Container(
             margin: const EdgeInsets.only(top: 10),
