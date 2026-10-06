@@ -66,3 +66,10 @@ Tiap dokumen punya nota. Buka dokumen, lalu ketuk tombol "Lihat faktur/surat jal
 - Daftar bahan baru bisa ditambah langsung saat membuat dokumen; owner bisa mengubah/menonaktifkan di tab Master.
 - Aplikasi belum punya ikon khusus (memakai ikon bawaan). Tambahkan folder `android_res/` bila sudah ada.
 - Aplikasi belum punya fitur lupa password; reset lewat Supabase (Authentication -> Users).
+
+### Nilai stok gudang (khusus owner)
+Jalankan `supabase_update_nilai_gudang.sql` (boleh kapan saja, tidak menimpa fungsi lama). Tidak mengubah tabel atau fungsi yang ada.
+- Beranda owner menampilkan kartu **Nilai stok gudang**; ketuk untuk melihat rincian per barang (stok x harga rata-rata = nilai).
+- Harga rata-rata = total (qty x harga) semua Barang Masuk dibagi total qty masuk. Barang yang keluar ke produksi atau cabang mengurangi stok, sehingga nilai ikut turun. Koreksi stok juga ikut mengubah nilai.
+- Yang dinilai: bahan mentah dan barang siap jual. Bahan jadi hasil produksi tidak dinilai (tidak punya harga grosir, dan nilai bahannya sudah terhitung).
+- Hanya akun owner yang bisa membaca (dicek di fungsi database).

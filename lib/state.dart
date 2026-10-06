@@ -27,6 +27,9 @@ class AppState extends ChangeNotifier {
   List<SaleEntry> sales = [];
   List<RekapRow> rekap = [];
   String? salesError;
+  List<NilaiRow> nilaiGudang = [];
+  String? nilaiError;
+  bool nilaiLoaded = false;
   AppRules rules = const AppRules();
   bool rulesLoaded = false;
   String? rulesError;
@@ -62,6 +65,9 @@ class AppState extends ChangeNotifier {
     sales = [];
     rekap = [];
     salesError = null;
+    nilaiGudang = [];
+    nilaiError = null;
+    nilaiLoaded = false;
     rules = const AppRules();
     rulesLoaded = false;
     rulesError = null;
@@ -99,6 +105,7 @@ class AppState extends ChangeNotifier {
         await _loadSales();
         await _loadRules();
         if (me!.role == 'owner') {
+          await _loadNilai();
           final pr = await sb.from('profiles').select('branch, role');
           profileBranches = {
             for (final e in pr)
@@ -121,6 +128,20 @@ class AppState extends ChangeNotifier {
     loading = false;
     notifyListeners();
   }
+
+  /// Nilai stok gudang (owner). Dimuat terpisah supaya aplikasi tetap jalan walau SQL nilai gudang belum dijalankan.
+  Future<void> _loadNilai() async {
+    try {
+      final r = await sb.rpc('nilai_gudang');
+      nilaiGudang = [for (final e in (r as List)) NilaiRow.fromJson(Map<String, dynamic>.from(e as Map))];
+      nilaiError = null;
+      nilaiLoaded = true;
+    } catch (e) {
+      nilaiError = errText(e);
+    }
+  }
+
+  double get totalNilaiGudang => nilaiGudang.fold(0.0, (a, r) => a + r.nilai);
 
   /// Data penjualan dimuat terpisah supaya aplikasi tetap jalan walau SQL penjualan belum dijalankan.
   Future<void> _loadSales() async {

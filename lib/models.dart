@@ -206,6 +206,25 @@ class StockRow {
       );
 }
 
+/// Nilai stok satu barang di gudang (khusus owner).
+class NilaiRow {
+  final String itemId, name, category, unit;
+  final bool siapJual;
+  final double qty, hargaRata, nilai;
+  NilaiRow({required this.itemId, required this.name, required this.category, required this.unit, required this.siapJual, required this.qty, required this.hargaRata, required this.nilai});
+  bool get adaHarga => hargaRata > 0;
+  factory NilaiRow.fromJson(Map<String, dynamic> j) => NilaiRow(
+        itemId: j['item_id'] as String,
+        name: (j['nama'] as String?) ?? '?',
+        category: (j['kategori'] as String?) ?? '',
+        unit: (j['satuan'] as String?) ?? '',
+        siapJual: j['siap_jual'] == true,
+        qty: toD(j['stok']),
+        hargaRata: toD(j['harga_rata']),
+        nilai: toD(j['nilai']),
+      );
+}
+
 /// Satu catatan penjualan (atau pembatalannya) di cabang.
 class SaleEntry {
   final int id;

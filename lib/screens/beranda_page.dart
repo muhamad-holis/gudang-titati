@@ -5,6 +5,7 @@ import '../state.dart';
 import '../theme.dart';
 import '../utils.dart';
 import 'doc_form_page.dart';
+import 'nilai_gudang_page.dart';
 import 'docs_page.dart';
 import 'sales_form_page.dart';
 import 'sales_page.dart';
@@ -137,6 +138,33 @@ class BerandaPage extends StatelessWidget {
     ]);
   }
 
+  Widget _nilaiCard(BuildContext context, AppState s) {
+    final ada = s.nilaiLoaded;
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      decoration: cardDeco(),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NilaiGudangPage())),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(children: [
+            const Icon(Icons.account_balance_wallet_outlined, size: 34, color: navy),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Nilai stok gudang', style: TextStyle(fontSize: 12, color: Colors.grey[700])),
+                Text(ada ? rp(s.totalNilaiGudang) : (s.nilaiError == null ? '...' : 'Belum tersedia'),
+                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: navy)),
+              ]),
+            ),
+            const Icon(Icons.chevron_right, color: Colors.grey),
+          ]),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
@@ -184,6 +212,7 @@ class BerandaPage extends StatelessWidget {
             ),
           ]),
         ),
+        if (s.isOwner) _nilaiCard(context, s),
         if (me.role != 'owner') ...[const SizedBox(height: 12), buttons],
         const SizedBox(height: 16),
         Row(children: [
