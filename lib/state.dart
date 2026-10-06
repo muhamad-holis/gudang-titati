@@ -202,10 +202,12 @@ class AppState extends ChangeNotifier {
   }
 
   /// Rekap masuk vs terjual satu cabang pada rentang tanggal [from, to] (inklusif).
+  /// Hanya barang yang dijual (bahan jadi / siap jual); bahan dan perlengkapan cabang tidak ikut.
   List<RekapSum> rekapFor(String branch, DateTime from, DateTime to) {
     final m = <String, RekapSum>{};
     for (final r in rekap) {
       if (r.location != branch || r.day.isBefore(from) || r.day.isAfter(to)) continue;
+      if (!sellable(r.itemId)) continue;
       final x = m.putIfAbsent(r.itemId, () => RekapSum(itemId: r.itemId, name: r.name, unit: r.unit, category: r.category));
       x.masuk += r.masuk;
       x.terjual += r.terjual;
@@ -334,10 +336,17 @@ class AppState extends ChangeNotifier {
   }
 
   // ---------- master data ----------
-  Future<Item> addItem(String name, String kind, String category, String unit, {bool siapJual = false}) async {
+  Future<Item> addItem(String name, String kind, String category, String unit, {bool siapJual = false, String jalur = 'olah'}) async {
     final r = await sb
         .from('items')
-        .insert({'name': name.trim(), 'kind': kind, 'category': category.trim(), 'unit': unit.trim(), if (siapJual) 'siap_jual': true})
+        .insert({
+          'name': name.trim(),
+          'kind': kind,
+          'category': category.trim(),
+          'unit': unit.trim(),
+          if (siapJual) 'siap_jual': true,
+          if (kind == 'mentah' && !siapJual && jalur != 'olah') ...{'untuk_produksi': jalur != 'cabang', 'ke_cabang': true},
+        })
         .select()
         .single();
     final it = Item.fromJson(Map<String, dynamic>.from(r));
@@ -347,7 +356,14 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> updateItem(String id,
-      {required String name, required String category, required String unit, required bool active, bool? siapJual, double? rendemenStd, bool setRendemen = false}) async {
+      {required String name,
+      required String category,
+      required String unit,
+      required bool active,
+      bool? siapJual,
+      double? rendemenStd,
+      bool setRendemen = false,
+      String? jalur}) async {
     await sb.from('items').update({
       'name': name.trim(),
       'category': category.trim(),
@@ -355,6 +371,7 @@ class AppState extends ChangeNotifier {
       'active': active,
       if (siapJual != null) 'siap_jual': siapJual,
       if (setRendemen) 'rendemen_std': rendemenStd,
+      if (jalur != null) ...{'untuk_produksi': jalur != 'cabang', 'ke_cabang': jalur != 'olah'},
     }).eq('id', id);
     await refresh(silent: true);
   }

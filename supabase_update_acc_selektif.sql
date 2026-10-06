@@ -2,6 +2,7 @@
 -- GUDANG TITATI - UPDATE: ACC OWNER SELEKTIF
 -- ACC owner hanya dipasang di titik yang menyangkut uang / tidak bisa dicek orang lain.
 --
+-- Jika supabase_master_data.sql sudah dijalankan, JANGAN jalankan ulang file ini (create_doc akan tertimpa).
 -- Jalankan SETELAH: supabase_setup_gudang.sql, supabase_update_penjualan.sql,
 -- supabase_update_siap_jual.sql, supabase_update_alur_tanpa_acc.sql. Aman diulang.
 --

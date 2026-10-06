@@ -20,7 +20,27 @@ class Item {
 
   /// Standar rendemen bahan jadi: hasil jadi per 1 satuan bahan mentah (mis. 1,2). null = belum diatur.
   final double? rendemenStd;
-  Item({required this.id, required this.name, required this.kind, required this.category, required this.unit, this.active = true, this.siapJual = false, this.rendemenStd});
+
+  /// Bahan mentah yang boleh dikirim ke produksi untuk diolah.
+  final bool untukProduksi;
+
+  /// Boleh diminta cabang langsung dari gudang tanpa produksi (bahan/perlengkapan cabang, tidak dijual satuan).
+  final bool keCabang;
+  Item({
+    required this.id,
+    required this.name,
+    required this.kind,
+    required this.category,
+    required this.unit,
+    this.active = true,
+    this.siapJual = false,
+    this.rendemenStd,
+    this.untukProduksi = true,
+    this.keCabang = false,
+  });
+
+  /// Jalur bahan mentah: 'olah' (hanya produksi), 'cabang' (langsung ke cabang), 'dua' (keduanya).
+  String get jalur => !untukProduksi ? 'cabang' : (keCabang ? 'dua' : 'olah');
   factory Item.fromJson(Map<String, dynamic> j) => Item(
         id: j['id'] as String,
         name: j['name'] as String,
@@ -30,8 +50,12 @@ class Item {
         active: (j['active'] as bool?) ?? true,
         siapJual: (j['siap_jual'] as bool?) ?? false,
         rendemenStd: j['rendemen_std'] == null ? null : toD(j['rendemen_std']),
+        untukProduksi: (j['untuk_produksi'] as bool?) ?? true,
+        keCabang: (j['ke_cabang'] as bool?) ?? false,
       );
 }
+
+String jalurLabel(String j) => j == 'cabang' ? 'langsung ke cabang' : (j == 'dua' ? 'diolah / langsung ke cabang' : 'diolah di produksi');
 
 /// Aturan kapan owner perlu ACC (diatur owner di tab Master > Aturan).
 class AppRules {

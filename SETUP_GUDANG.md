@@ -31,6 +31,13 @@ ACC owner hanya dipasang di titik yang menyangkut uang atau tidak bisa dicek ora
 6. Cabang: Catat Penjualan (tab Jual hanya tampil di akun cabang). Rekap penjualan menampilkan per barang: Masuk, Terjual, dan Sisa (stok cabang sekarang). Kotak merah "Barang kurang diterima" muncul hanya jika barang yang diterima cabang lebih sedikit dari yang dikirim gudang. Pembatalan catatan penjualan hari lain hanya bisa dilakukan owner.
 7. Owner: memantau semua dokumen, stok, dan penjualan. Beranda owner menampilkan "Perlu dipantau" (selisih terima / tertahan > 24 jam). Koreksi stok hanya owner (wajib alasan).
 
+### Master data bahan dan jalur barang
+Jalankan `supabase_master_data.sql` (paling akhir) untuk memasukkan 51 barang dari PDF master data. Tiap bahan mentah punya **jalur**:
+- **Diolah di produksi** (6): daging sapi, lemak sapi, tapioka, sagu, es batu, baking powder. Hanya muncul di pilihan Kirim ke Produksi.
+- **Keduanya** (9): daging ayam, tetelan sapi, tepung terigu, garam, gula pasir, merica bubuk, bawang putih, bawang merah, penyedap rasa. Bisa dikirim ke produksi dan diminta cabang.
+- **Langsung ke cabang** (36): mie telur, telur, minyak, kecap dan saus, sayuran, saus meja, kemasan, dll. Gudang mengirim langsung ke cabang lewat Permintaan Cabang, tanpa produksi, dan tidak muncul di Catat Penjualan.
+Jalur bisa diubah owner: Master -> Bahan mentah -> ketuk barang -> pilih Jalur barang. Barang jadi hasil produksi (bakso, dll) tidak ada di PDF, tambahkan lewat Master -> Bahan jadi.
+
 ### Nota / faktur
 Tiap dokumen punya nota. Buka dokumen, lalu ketuk tombol "Lihat faktur/surat jalan" atau ikon nota di pojok kanan atas.
 - Barang Masuk tampil sebagai *Faktur Pembelian* (harga, subtotal, total, cap status verifikasi owner, tanda tangan kepala gudang dan owner).

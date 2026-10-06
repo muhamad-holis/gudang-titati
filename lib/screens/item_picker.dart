@@ -7,6 +7,28 @@ import '../utils.dart';
 
 const _units = ['kg', 'gram', 'liter', 'pcs', 'pak', 'ikat', 'butir', 'porsi', 'bungkus'];
 
+/// Pilihan jalur bahan mentah: diolah di produksi, langsung ke cabang, atau keduanya.
+Widget _jalurPicker(String jalur, void Function(String) onChanged) {
+  const opsi = [
+    ['olah', 'Diolah di produksi'],
+    ['cabang', 'Langsung ke cabang'],
+    ['dua', 'Keduanya'],
+  ];
+  return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    const Padding(
+      padding: EdgeInsets.only(top: 10, bottom: 4),
+      child: Text('Jalur barang', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+    ),
+    Wrap(spacing: 6, children: [
+      for (final o in opsi) ChoiceChip(label: Text(o[1], style: const TextStyle(fontSize: 12)), selected: jalur == o[0], onSelected: (_) => onChanged(o[0])),
+    ]),
+    const Padding(
+      padding: EdgeInsets.only(top: 4),
+      child: Text('Langsung ke cabang = tidak lewat produksi dan tidak dijual satuan (mis. kemasan, saus meja, sayuran).', style: TextStyle(fontSize: 11, color: Colors.grey)),
+    ),
+  ]);
+}
+
 Widget _chipRow(List<String> values, TextEditingController c, void Function(VoidCallback) setS) {
   return Wrap(spacing: 6, runSpacing: 0, children: [
     for (final v in values) ActionChip(label: Text(v, style: const TextStyle(fontSize: 12)), onPressed: () => setS(() => c.text = v)),
@@ -20,7 +42,8 @@ List<String> categoryChoices(AppState s, String kind) {
 }
 
 /// Pilih bahan (kind null = semua jenis).
-/// sellable = hanya bahan jadi + barang siap jual. noSiap = sembunyikan barang siap jual.
+/// sellable = hanya barang yang boleh diminta cabang (bahan jadi, siap jual, atau bahan/perlengkapan cabang).
+/// noSiap = hanya bahan mentah untuk produksi (sembunyikan barang siap jual dan barang khusus cabang).
 Future<Item?> pickItem(BuildContext context, {String? kind, String? stockLocation, bool sellable = false, bool noSiap = false}) {
   return showModalBottomSheet<Item>(
     context: context,
@@ -49,8 +72,8 @@ class _PickSheetState extends State<_PickSheet> {
         .where((i) =>
             i.active &&
             (widget.kind == null || i.kind == widget.kind) &&
-            (!widget.sellable || i.kind == 'jadi' || i.siapJual) &&
-            (!widget.noSiap || !i.siapJual))
+            (!widget.sellable || i.kind == 'jadi' || i.siapJual || i.keCabang) &&
+            (!widget.noSiap || (!i.siapJual && i.untukProduksi)))
         .toList();
     final cats = ['Semua', ...({...all.map((i) => i.category)}.toList()..sort())];
     final list = all.where((i) => (cat == 'Semua' || i.category == cat) && i.name.toLowerCase().contains(q.toLowerCase())).toList();
@@ -127,6 +150,7 @@ Future<Item?> addItemDialog(BuildContext context, AppState s, {String? kind}) {
   final unit = TextEditingController(text: 'kg');
   var k = kind ?? 'mentah';
   var siap = false;
+  var jalur = 'olah';
   final cat = TextEditingController(text: k == 'jadi' ? 'Bahan jadi' : '');
   String? err;
   var saving = false;
@@ -159,6 +183,7 @@ Future<Item?> addItemDialog(BuildContext context, AppState s, {String? kind}) {
                 value: siap,
                 onChanged: (v) => setS(() => siap = v ?? false),
               ),
+            if (k == 'mentah' && !siap) _jalurPicker(jalur, (v) => setS(() => jalur = v)),
             if (err != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(err!, style: const TextStyle(color: red))),
           ]),
         ),
@@ -177,7 +202,7 @@ Future<Item?> addItemDialog(BuildContext context, AppState s, {String? kind}) {
                       err = null;
                     });
                     try {
-                      final it = await s.addItem(name.text, k, cat.text, unit.text, siapJual: k == 'mentah' && siap);
+                      final it = await s.addItem(name.text, k, cat.text, unit.text, siapJual: k == 'mentah' && siap, jalur: jalur);
                       if (d.mounted) Navigator.pop(d, it);
                     } catch (e) {
                       if (d.mounted) {
@@ -203,6 +228,7 @@ Future<bool?> editItemDialog(BuildContext context, AppState s, Item it) {
   final unit = TextEditingController(text: it.unit);
   var active = it.active;
   var siap = it.siapJual;
+  var jalur = it.jalur;
   final rend = TextEditingController(text: it.rendemenStd == null ? '' : fmtQty(it.rendemenStd!));
   String? err;
   var saving = false;
@@ -242,6 +268,7 @@ Future<bool?> editItemDialog(BuildContext context, AppState s, Item it) {
                 value: siap,
                 onChanged: (v) => setS(() => siap = v),
               ),
+            if (it.kind == 'mentah' && !siap) _jalurPicker(jalur, (v) => setS(() => jalur = v)),
             if (err != null) Text(err!, style: const TextStyle(color: red)),
           ]),
         ),
@@ -273,7 +300,8 @@ Future<bool?> editItemDialog(BuildContext context, AppState s, Item it) {
                           active: active,
                           siapJual: (it.kind == 'mentah' && siap != it.siapJual) ? siap : null,
                           rendemenStd: newRend,
-                          setRendemen: rendChanged);
+                          setRendemen: rendChanged,
+                          jalur: (it.kind == 'mentah' && jalur != it.jalur) ? jalur : null);
                       if (d.mounted) Navigator.pop(d, true);
                     } catch (e) {
                       if (d.mounted) {

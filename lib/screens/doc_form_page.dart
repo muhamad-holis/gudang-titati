@@ -190,7 +190,7 @@ class _DocFormPageState extends State<DocFormPage> {
           _section(s, 'Bahan mentah yang dipakai', 'pakai', 'mentah', stockLoc: 'produksi', noSiap: true),
           _section(s, 'Hasil jadi yang disetor', 'hasil', 'jadi'),
         ],
-        if (t == 'minta_cabang') _section(s, 'Barang yang diminta (bahan jadi / siap jual)', 'item', 'jadi', sellable: true),
+        if (t == 'minta_cabang') _section(s, 'Barang yang diminta', 'item', 'jadi', sellable: true),
         const SizedBox(height: 14),
         TextField(
           controller: note,

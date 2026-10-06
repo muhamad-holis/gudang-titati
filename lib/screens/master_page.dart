@@ -64,7 +64,7 @@ class _ItemsTab extends StatelessWidget {
                     onTap: () => editItemDialog(context, s, it),
                     title: Text(it.name, style: TextStyle(fontWeight: FontWeight.w700, color: it.active ? null : Colors.grey)),
                     subtitle: Text.rich(TextSpan(children: [
-                      TextSpan(text: '${it.category} • ${it.unit}${it.siapJual ? ' • siap jual' : ''}${it.active ? '' : ' • nonaktif'}'),
+                      TextSpan(text: '${it.category} • ${it.unit}${it.siapJual ? ' • siap jual' : (it.kind == 'mentah' ? ' • ${jalurLabel(it.jalur)}' : '')}${it.active ? '' : ' • nonaktif'}'),
                       if (kind == 'jadi')
                         it.rendemenStd == null
                             ? const TextSpan(text: ' • belum ada standar rendemen', style: TextStyle(color: orange, fontWeight: FontWeight.w700))
