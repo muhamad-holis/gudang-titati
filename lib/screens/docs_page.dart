@@ -34,13 +34,14 @@ class DocCard extends StatelessWidget {
               '${doc.no} • ${tglJam(doc.createdAt)} • ${doc.createdByName}${doc.branch.isEmpty ? '' : ' • ${doc.branch}'}',
               style: TextStyle(fontSize: 11, color: Colors.grey[700]),
             ),
-            if (act != null || doc.hasDiff || doc.belumVerif)
+            if (act != null || doc.hasDiff || doc.belumVerif || doc.pembelianDitolak)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
                 child: Wrap(spacing: 8, children: [
                   if (act != null) Text('▶ $act', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: orange)),
+                  if (doc.belumVerif && act == null) const Text('⏳ Belum diverifikasi owner', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: orange)),
+                  if (doc.pembelianDitolak) const Text('⚠ Pembelian ditolak owner', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: red)),
                   if (doc.hasDiff) const Text('⚠ Ada selisih', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: red)),
-                  if (doc.belumVerif) Text(doc.ownerCheck == 'keberatan' ? '⚠ Owner keberatan' : 'Belum diverifikasi owner', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: doc.ownerCheck == 'keberatan' ? red : orange)),
                 ]),
               ),
           ]),
@@ -60,7 +61,7 @@ class _DocsPageState extends State<DocsPage> {
   String status = 'semua';
   String type = 'semua';
 
-  static const statuses = ['semua', 'diajukan', 'disetujui', 'dikirim', 'diterima', 'ditolak', 'selisih', 'belum_verif'];
+  static const statuses = ['semua', 'diajukan', 'belum_verif', 'disetujui', 'dikirim', 'diterima', 'ditolak', 'selisih'];
   static const types = ['semua', 'masuk', 'kirim_produksi', 'setor_jadi', 'minta_cabang'];
 
   Widget _chips(List<String> values, String current, String Function(String) label, ValueChanged<String> onPick) {

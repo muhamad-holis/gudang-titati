@@ -21,14 +21,21 @@ Hasil cek harus menampilkan 6 baris dengan peran yang benar.
 - Build berjalan otomatis; APK ada di Actions -> Artifacts. Tag `v*` juga membuat Release.
 
 ## 4. Alur pemakaian (ACC owner selektif)
-1. Kepala gudang: Barang Masuk (dari grosir) -> stok langsung bertambah, dokumen "Belum diverifikasi owner" sampai di-ACC (tombol "ACC semua pembelian" ada di Beranda owner; hanya untuk Barang Masuk).
-2. Kepala gudang: Kirim ke Produksi -> langsung terkirim -> kepala produksi Terima.
-3. Kepala produksi: Setor Hasil Produksi -> kalau hasil wajar langsung terkirim -> kepala gudang Terima. Kalau jauh dari biasanya -> Menunggu ACC owner (stok belum bergerak).
-4. Cabang: Minta Bahan Jadi -> antre di gudang (kalau jumlah jauh di atas biasanya: menunggu ACC owner dulu) -> gudang boleh mengurangi jumlah sesuai stok lalu Kirim -> cabang Terima.
-5. Cabang: Catat Penjualan (tab Jual hanya tampil di akun cabang).
-6. Owner: memantau semua dokumen, stok, dan penjualan. Beranda owner menampilkan "Perlu dipantau" (selisih terima / tertahan > 24 jam). Owner tetap bisa koreksi stok (wajib alasan) dan kelola Master.
+ACC owner hanya dipasang di titik yang menyangkut uang atau tidak bisa dicek orang lain. Titik lain dijaga oleh penerima yang menghitung fisik.
 
-> Jalankan `supabase_update_alur_tanpa_acc.sql`, lalu `supabase_update_acc_selektif.sql`, SETELAH tiga file SQL lainnya. Batas "menyimpang" (toleransi 20%, kelipatan 2x, min. 3 data lama) ada di tabel `app_settings`. Dokumen menyimpang (setoran/permintaan cabang) selalu diputuskan owner satu per satu. Dokumen lama berstatus "Menunggu ACC" tetap bisa di-ACC owner.
+1. **Barang Masuk (wajib ACC owner, tapi tidak menghambat gudang)**: kepala gudang mencatat pembelian dari grosir, harga satuan WAJIB diisi. Stok gudang langsung bertambah, dokumen ditandai "Belum diverifikasi owner" sampai di-ACC. Owner bisa ACC satu per satu atau lewat tombol "ACC semua pembelian" di Beranda. Jika owner menolak, alasan wajib diisi; stok yang sudah masuk tidak ditarik (barangnya sudah ada), owner menindaklanjuti dan bila perlu mengoreksi stok.
+2. **Gudang ke Produksi (tanpa ACC)**: langsung terkirim, kepala produksi Terima.
+3. **Setor Hasil Produksi (ACC hanya jika menyimpang)**: hasil jadi dihitung kembali ke bahan mentah lewat *rendemen standar* tiap bahan jadi. Jika bahan yang dipakai berbeda dari perhitungan lebih dari toleransi (bawaan 15%), setoran menunggu ACC owner dan stok belum bergerak. Jika wajar, langsung terkirim dan kepala gudang Terima. Bahan jadi yang belum punya standar rendemen selalu minta ACC.
+4. **Permintaan Cabang (tanpa ACC, kecuali jauh di atas biasanya)**: antre di gudang, gudang boleh mengurangi jumlah sesuai stok lalu Kirim, cabang Terima. Jika jumlah satu barang lebih dari 2 kali rata-rata permintaan cabang itu dalam 28 hari terakhir (minimal 3 permintaan sebelumnya), menunggu ACC owner.
+5. **Terima barang (tanpa ACC)**: penerima menghitung fisik; selisih otomatis tampil merah di owner.
+6. Cabang: Catat Penjualan (tab Jual hanya tampil di akun cabang). Pembatalan catatan penjualan hari lain hanya bisa dilakukan owner.
+7. Owner: memantau semua dokumen, stok, dan penjualan. Beranda owner menampilkan "Perlu dipantau" (selisih terima / tertahan > 24 jam). Koreksi stok hanya owner (wajib alasan).
+
+### Langkah setelah SQL update
+- Jalankan `supabase_update_acc_selektif.sql` SETELAH `supabase_update_alur_tanpa_acc.sql` (urutan: setup, penjualan, siap_jual, alur_tanpa_acc, acc_selektif). Aman diulang.
+- Login Owner -> Master -> Bahan jadi -> ketuk tiap bahan -> isi *Rendemen standar* (hasil jadi per 1 satuan bahan mentah, mis. 10 kg jadi 12 kg: isi 1,2). Satuan bahan yang dipakai pada setoran sebaiknya sama (mis. semua kg).
+- Toleransi rendemen dan batas permintaan cabang bisa diubah di Master -> Aturan ACC.
+- Dokumen lama berstatus "Menunggu ACC" tetap bisa di-ACC owner.
 
 ## Aturan penting
 - Stok pengirim berkurang saat dikirim; stok penerima bertambah hanya setelah penerima menekan Terima.

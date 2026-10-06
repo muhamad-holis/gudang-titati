@@ -13,37 +13,51 @@ class BerandaPage extends StatelessWidget {
   const BerandaPage({super.key});
 
   Future<void> _open(BuildContext context, String type) async {
-    final ok = await Navigator.push<String>(context, MaterialPageRoute(builder: (_) => DocFormPage(type: type)));
-    if (ok == 'acc' && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(type == 'minta_cabang' ? 'Jumlah jauh di atas biasanya, menunggu ACC owner' : 'Hasil menyimpang dari biasanya, menunggu ACC owner')));
-    } else if (ok == 'ok' && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(type == 'minta_cabang' ? 'Permintaan terkirim ke gudang' : (type == 'masuk' ? 'Barang masuk tercatat, stok gudang bertambah' : 'Terkirim, menunggu konfirmasi penerima'))));
+    final r = await Navigator.push<Object?>(context, MaterialPageRoute(builder: (_) => DocFormPage(type: type)));
+    if (r != null && context.mounted) {
+      final held = r is Doc && r.status == 'diajukan';
+      final String msg;
+      if (type == 'masuk') {
+        msg = 'Barang masuk tercatat, stok gudang bertambah. Menunggu verifikasi harga oleh owner';
+      } else if (type == 'minta_cabang') {
+        msg = held ? 'Jumlah jauh di atas biasanya, menunggu ACC owner' : 'Permintaan terkirim ke gudang';
+      } else if (type == 'setor_jadi') {
+        msg = held ? 'Hasil menyimpang dari standar, menunggu ACC owner' : 'Terkirim, menunggu konfirmasi gudang';
+      } else {
+        msg = 'Terkirim, menunggu konfirmasi penerima';
+      }
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
     }
   }
 
-  /// ACC semua hanya untuk pembelian (Barang Masuk). Dokumen menyimpang harus dilihat satu per satu.
-  Future<void> _accAll(BuildContext context, AppState s, int count) async {
+  /// ACC semua hanya untuk verifikasi pembelian. Setoran / permintaan yang menyimpang sengaja dibuka satu per satu.
+  Future<void> _accAll(BuildContext context, AppState s, List<Doc> tasks) async {
+    final total = tasks.fold<double>(0, (a, d) => a + d.lines.fold<double>(0, (b, l) => b + l.price * l.qty));
     final ok = await showDialog<bool>(
       context: context,
       builder: (d) => AlertDialog(
-        title: Text('ACC semua pembelian ($count)?'),
-        content: const Text('Semua pembelian barang masuk yang belum diverifikasi akan di-ACC. Dokumen yang menyimpang (setoran produksi / permintaan cabang) tetap harus dibuka dan diputuskan satu per satu.'),
+        title: Text('Verifikasi semua pembelian (${tasks.length})?'),
+        content: Text('Total pembelian ${rp(total)}. Harga dan pembelian semua dokumen ini dianggap sudah Anda periksa. Stok sudah masuk sejak dokumen dibuat.\n\nUntuk menolak satu pembelian, buka dokumennya.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Batal')),
-          FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('ACC semua')),
+          FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Verifikasi semua')),
         ],
       ),
     );
     if (ok != true) return;
-    String msg;
-    try {
-      final n = await s.verifyAllMasuk();
-      msg = '$n pembelian diverifikasi';
-    } catch (e) {
-      msg = errText(e);
+    var done = 0;
+    String? err;
+    for (final d in tasks) {
+      try {
+        await s.ownerDecide(d.id, 'acc');
+        done++;
+      } catch (e) {
+        err = errText(e);
+        break;
+      }
     }
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err == null ? '$done pembelian diverifikasi' : '$done diverifikasi. Berhenti: $err')));
     }
   }
 
@@ -170,11 +184,8 @@ class BerandaPage extends StatelessWidget {
         const SizedBox(height: 16),
         Row(children: [
           Expanded(child: Text('Perlu tindakan Anda (${tasks.length})', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800))),
-          if (s.isOwner && tasks.where((d) => d.type == 'masuk' && d.ownerCheck == 'belum').length > 1)
-            TextButton.icon(
-                onPressed: () => _accAll(context, s, tasks.where((d) => d.type == 'masuk' && d.ownerCheck == 'belum').length),
-                icon: const Icon(Icons.done_all, size: 18),
-                label: const Text('ACC semua pembelian')),
+          if (s.isOwner && s.pembelianBelumVerif.length > 1)
+            TextButton.icon(onPressed: () => _accAll(context, s, s.pembelianBelumVerif), icon: const Icon(Icons.done_all, size: 18), label: const Text('ACC semua pembelian')),
         ]),
         const SizedBox(height: 6),
         if (tasks.isEmpty)
@@ -188,7 +199,7 @@ class BerandaPage extends StatelessWidget {
           const SizedBox(height: 16),
           Text('Perlu dipantau (${s.ownerAlerts.length})', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
           const SizedBox(height: 2),
-          Text('Ada selisih terima, pembelian yang Anda keberatan, atau tertahan lebih dari 24 jam', style: TextStyle(fontSize: 12, color: Colors.grey[700])),
+          Text('Ada selisih terima, atau tertahan lebih dari 24 jam', style: TextStyle(fontSize: 12, color: Colors.grey[700])),
           const SizedBox(height: 6),
           for (final d in s.ownerAlerts) DocCard(doc: d),
         ],

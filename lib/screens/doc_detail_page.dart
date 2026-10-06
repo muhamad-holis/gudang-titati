@@ -118,27 +118,17 @@ class _DocDetailPageState extends State<DocDetailPage> {
 
   Future<void> _acc(AppState s, Doc d) async {
     final payload = editing ? _editPayload(d) : <Map<String, dynamic>>[];
-    final note = await _noteDialog(payload.isEmpty ? 'ACC dokumen ini?' : 'ACC dengan jumlah diubah?', okText: 'ACC');
+    final title = d.belumVerif ? 'Verifikasi pembelian ini?' : (payload.isEmpty ? 'ACC dokumen ini?' : 'ACC dengan jumlah diubah?');
+    final note = await _noteDialog(title, okText: d.belumVerif ? 'Verifikasi' : 'ACC');
     if (note == null) return;
-    await _run(() => s.ownerDecide(d.id, 'acc', note: note, lines: payload.isEmpty ? null : payload), 'Dokumen disetujui');
-  }
-
-  Future<void> _verif(AppState s, Doc d) async {
-    final note = await _noteDialog('Verifikasi pembelian ini?', okText: 'ACC');
-    if (note == null) return;
-    await _run(() => s.verifyMasuk(d.id, 'acc', note: note), 'Pembelian diverifikasi');
-  }
-
-  Future<void> _keberatan(AppState s, Doc d) async {
-    final note = await _noteDialog('Keberatan atas pembelian ini?', required: true, label: 'Alasan (harga/jumlah)', okText: 'Kirim');
-    if (note == null) return;
-    await _run(() => s.verifyMasuk(d.id, 'keberatan', note: note), 'Keberatan dicatat');
+    await _run(() => s.ownerDecide(d.id, 'acc', note: note, lines: payload.isEmpty ? null : payload), d.belumVerif ? 'Pembelian diverifikasi' : 'Dokumen disetujui');
   }
 
   Future<void> _tolak(AppState s, Doc d) async {
-    final note = await _noteDialog('Tolak dokumen ini?', required: true, label: 'Alasan penolakan', okText: 'Tolak');
+    final note = await _noteDialog(d.belumVerif ? 'Tolak pembelian ini?' : 'Tolak dokumen ini?',
+        required: true, label: d.belumVerif ? 'Alasan (stok yang sudah masuk tidak ditarik)' : 'Alasan penolakan', okText: 'Tolak');
     if (note == null) return;
-    await _run(() => s.ownerDecide(d.id, 'tolak', note: note), 'Dokumen ditolak');
+    await _run(() => s.ownerDecide(d.id, 'tolak', note: note), d.belumVerif ? 'Pembelian ditandai ditolak' : 'Dokumen ditolak');
   }
 
   Future<void> _saveEdit(AppState s, Doc d) async {
@@ -281,14 +271,14 @@ class _DocDetailPageState extends State<DocDetailPage> {
       );
     }
 
-    final canOwnerDecide = s.isOwner && d.status == 'diajukan';
-    final canVerify = s.isOwner && d.belumVerif;
+    final canOwnerDecide = s.isOwner && (d.status == 'diajukan' || d.belumVerif);
+    final rejected = d.status == 'ditolak' || d.pembelianDitolak;
     final canOwnerEdit = s.isOwner && d.status == 'disetujui';
     final canSend = d.status == 'disetujui' && d.type != 'masuk' && s.isSender(d);
     final canReceive = d.status == 'dikirim' && s.isReceiver(d);
     final canCancel = (d.status == 'diajukan' || (d.status == 'disetujui' && d.type == 'minta_cabang')) && s.isCreator(d);
     final canGudangAdjust = s.role == 'gudang' && d.type == 'minta_cabang' && d.status == 'disetujui';
-    final hasBar = canVerify || canOwnerDecide || canOwnerEdit || canSend || canReceive || canCancel;
+    final hasBar = canOwnerDecide || canOwnerEdit || canSend || canReceive || canCancel;
 
     Widget? bar;
     if (hasBar) {
@@ -304,18 +294,14 @@ class _DocDetailPageState extends State<DocDetailPage> {
               ),
             ),
           );
-      if (canVerify) {
-        if (d.ownerCheck == 'belum') buttons.add(fb('Keberatan', Icons.flag_outlined, () => _keberatan(s, d), c: red));
-        buttons.add(fb('ACC pembelian', Icons.check, () => _verif(s, d), c: green));
-      }
       if (canOwnerDecide) {
         if (editing) {
           buttons.add(fb('Batal ubah', Icons.close, () => setState(() => editing = false), c: Colors.grey));
           buttons.add(fb('Simpan & ACC', Icons.check, () => _acc(s, d), c: green));
         } else {
           buttons.add(fb('Tolak', Icons.block, () => _tolak(s, d), c: red));
-          buttons.add(fb('Ubah jumlah', Icons.edit_outlined, () => _startEdit(d), c: navy2));
-          buttons.add(fb('ACC', Icons.check, () => _acc(s, d), c: green));
+          if (!d.belumVerif) buttons.add(fb('Ubah jumlah', Icons.edit_outlined, () => _startEdit(d), c: navy2));
+          buttons.add(fb(d.belumVerif ? 'Verifikasi (ACC)' : 'ACC', Icons.check, () => _acc(s, d), c: green));
         }
       }
       if (canOwnerEdit) {
@@ -367,15 +353,15 @@ class _DocDetailPageState extends State<DocDetailPage> {
             if (d.branch.isNotEmpty) _kv('Cabang', d.branch),
             if (d.supplier.isNotEmpty) _kv('Grosir', d.supplier),
             if (d.note.isNotEmpty) _kv('Catatan', d.note),
-            if (d.approvedAt != null) _kv(d.status == 'ditolak' ? 'Ditolak' : 'Diputuskan', '${tglJam(d.approvedAt!)} oleh ${d.approvedByName}'),
-            if (d.ownerNote.isNotEmpty) _kv(d.status == 'ditolak' ? 'Alasan' : 'Catatan owner', d.ownerNote, color: d.status == 'ditolak' ? red : null),
+            if (d.belumVerif) _kv('Verifikasi', 'Belum diverifikasi owner (stok sudah masuk)', color: orange),
+            if (d.verif == 'ok') _kv('Verifikasi', 'Pembelian diverifikasi owner', color: green),
+            if (d.accReason.isNotEmpty) _kv('Perlu ACC karena', d.accReason, color: orange),
+            if (d.approvedAt != null) _kv(rejected ? 'Ditolak' : 'Diputuskan', '${tglJam(d.approvedAt!)} oleh ${d.approvedByName}'),
+            if (d.ownerNote.isNotEmpty) _kv(rejected ? 'Alasan' : 'Catatan owner', d.ownerNote, color: rejected ? red : null),
+            if (d.pembelianDitolak) _kv('Catatan', 'Pembelian ditolak owner. Stok yang sudah masuk tidak ditarik; owner dapat mengoreksi stok bila perlu.', color: red),
             if (d.sentAt != null) _kv('Dikirim', tglJam(d.sentAt!)),
             if (d.receivedAt != null) _kv('Diterima', '${tglJam(d.receivedAt!)}${d.receivedByName.isEmpty ? '' : ' oleh ${d.receivedByName}'}'),
             if (total > 0) _kv('Total pembelian', rp(total)),
-            if (d.type == 'masuk')
-              _kv('Verifikasi owner', d.ownerCheck == 'ok' ? 'Sudah${d.verifiedByName.isEmpty ? '' : ' oleh ${d.verifiedByName}'}' : (d.ownerCheck == 'keberatan' ? 'Owner keberatan' : 'Belum diverifikasi owner'),
-                  color: d.ownerCheck == 'ok' ? green : (d.ownerCheck == 'keberatan' ? red : orange)),
-            if (d.flagReason.isNotEmpty) _kv('Menyimpang', d.flagReason, color: red),
             if (d.hasDiff) _kv('Selisih', 'Ada selisih jumlah diterima', color: red),
           ]),
         ),

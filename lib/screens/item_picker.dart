@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../models.dart';
 import '../state.dart';
 import '../theme.dart';
+import '../utils.dart';
 
 const _units = ['kg', 'gram', 'liter', 'pcs', 'pak', 'ikat', 'butir', 'porsi', 'bungkus'];
 
@@ -202,6 +203,7 @@ Future<bool?> editItemDialog(BuildContext context, AppState s, Item it) {
   final unit = TextEditingController(text: it.unit);
   var active = it.active;
   var siap = it.siapJual;
+  final rend = TextEditingController(text: it.rendemenStd == null ? '' : fmtQty(it.rendemenStd!));
   String? err;
   var saving = false;
   return showDialog<bool>(
@@ -219,6 +221,19 @@ Future<bool?> editItemDialog(BuildContext context, AppState s, Item it) {
             TextField(controller: unit, decoration: const InputDecoration(labelText: 'Satuan')),
             _chipRow(_units, unit, setS),
             SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('Aktif (muncul di pilihan)'), value: active, onChanged: (v) => setS(() => active = v)),
+            if (it.kind == 'jadi')
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: TextField(
+                  controller: rend,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    labelText: 'Rendemen standar (opsional)',
+                    helperText: 'Hasil jadi dari 1 satuan bahan mentah. Mis. 10 kg bahan jadi 12 kg: isi 1,2. Kosong = setoran selalu minta ACC owner.',
+                    helperMaxLines: 4,
+                  ),
+                ),
+              ),
             if (it.kind == 'mentah')
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
@@ -240,9 +255,25 @@ Future<bool?> editItemDialog(BuildContext context, AppState s, Item it) {
                       setS(() => err = 'Nama, kategori, dan satuan wajib diisi');
                       return;
                     }
+                    double? newRend;
+                    if (it.kind == 'jadi' && rend.text.trim().isNotEmpty) {
+                      newRend = parseQty(rend.text);
+                      if (newRend == null || newRend <= 0) {
+                        setS(() => err = 'Rendemen harus berupa angka lebih dari 0');
+                        return;
+                      }
+                    }
+                    final rendChanged = it.kind == 'jadi' && newRend != it.rendemenStd;
                     setS(() => saving = true);
                     try {
-                      await s.updateItem(it.id, name: name.text, category: cat.text, unit: unit.text, active: active, siapJual: (it.kind == 'mentah' && siap != it.siapJual) ? siap : null);
+                      await s.updateItem(it.id,
+                          name: name.text,
+                          category: cat.text,
+                          unit: unit.text,
+                          active: active,
+                          siapJual: (it.kind == 'mentah' && siap != it.siapJual) ? siap : null,
+                          rendemenStd: newRend,
+                          setRendemen: rendChanged);
                       if (d.mounted) Navigator.pop(d, true);
                     } catch (e) {
                       if (d.mounted) {

@@ -17,7 +17,10 @@ class Item {
 
   /// Barang dagangan: dibeli jadi, dikirim gudang langsung ke cabang, tanpa produksi.
   final bool siapJual;
-  Item({required this.id, required this.name, required this.kind, required this.category, required this.unit, this.active = true, this.siapJual = false});
+
+  /// Standar rendemen bahan jadi: hasil jadi per 1 satuan bahan mentah (mis. 1,2). null = belum diatur.
+  final double? rendemenStd;
+  Item({required this.id, required this.name, required this.kind, required this.category, required this.unit, this.active = true, this.siapJual = false, this.rendemenStd});
   factory Item.fromJson(Map<String, dynamic> j) => Item(
         id: j['id'] as String,
         name: j['name'] as String,
@@ -26,6 +29,20 @@ class Item {
         unit: (j['unit'] as String?) ?? 'pcs',
         active: (j['active'] as bool?) ?? true,
         siapJual: (j['siap_jual'] as bool?) ?? false,
+        rendemenStd: j['rendemen_std'] == null ? null : toD(j['rendemen_std']),
+      );
+}
+
+/// Aturan kapan owner perlu ACC (diatur owner di tab Master > Aturan).
+class AppRules {
+  final double rendemenToleransi, mintaFaktor;
+  final int mintaHari, mintaMinData;
+  const AppRules({this.rendemenToleransi = 15, this.mintaFaktor = 2, this.mintaHari = 28, this.mintaMinData = 3});
+  factory AppRules.fromJson(Map<String, dynamic> j) => AppRules(
+        rendemenToleransi: toD(j['rendemen_toleransi']),
+        mintaFaktor: toD(j['minta_faktor']),
+        mintaHari: toD(j['minta_hari']).round(),
+        mintaMinData: toD(j['minta_min_data']).round(),
       );
 }
 
@@ -61,7 +78,13 @@ class DocLine {
 }
 
 class Doc {
-  final String id, no, type, status, branch, supplier, note, ownerNote, createdBy, createdByName, approvedByName, receivedByName, ownerCheck, flagReason, verifiedByName;
+  final String id, no, type, status, branch, supplier, note, ownerNote, createdBy, createdByName, approvedByName, receivedByName;
+
+  /// Khusus Barang Masuk: '' (dokumen lama), 'menunggu' (belum diverifikasi owner), 'ok', 'tolak'.
+  final String verif;
+
+  /// Alasan dokumen ini menunggu ACC owner (setoran / permintaan yang menyimpang).
+  final String accReason;
   final DateTime createdAt;
   final DateTime? approvedAt, sentAt, receivedAt;
   final List<DocLine> lines;
@@ -78,9 +101,8 @@ class Doc {
     required this.createdByName,
     required this.approvedByName,
     required this.receivedByName,
-    this.ownerCheck = 'na',
-    this.flagReason = '',
-    this.verifiedByName = '',
+    this.verif = '',
+    this.accReason = '',
     required this.createdAt,
     this.approvedAt,
     this.sentAt,
@@ -103,9 +125,8 @@ class Doc {
       createdByName: (j['created_by_name'] as String?) ?? '',
       approvedByName: (j['approved_by_name'] as String?) ?? '',
       receivedByName: (j['received_by_name'] as String?) ?? '',
-      ownerCheck: (j['owner_check'] as String?) ?? 'na',
-      flagReason: (j['flag_reason'] as String?) ?? '',
-      verifiedByName: (j['verified_by_name'] as String?) ?? '',
+      verif: (j['verif'] as String?) ?? '',
+      accReason: (j['acc_reason'] as String?) ?? '',
       createdAt: DateTime.parse(j['created_at'] as String).toLocal(),
       approvedAt: dt(j['approved_at']),
       sentAt: dt(j['sent_at']),
@@ -114,11 +135,14 @@ class Doc {
     );
   }
 
+  /// Barang masuk yang stoknya sudah masuk tapi harga/pembelian belum di-ACC owner.
+  bool get belumVerif => type == 'masuk' && verif == 'menunggu';
+
+  /// Barang masuk yang pembeliannya ditolak owner (stok tidak ditarik).
+  bool get pembelianDitolak => type == 'masuk' && verif == 'tolak';
+
   /// Baris yang diterima di tujuan (untuk setoran: hanya hasil jadi).
   List<DocLine> get receivable => lines.where((l) => type != 'setor_jadi' || l.role == 'hasil').toList();
-
-  /// Barang Masuk yang harganya belum di-ACC owner.
-  bool get belumVerif => type == 'masuk' && (ownerCheck == 'belum' || ownerCheck == 'keberatan');
 
   bool get hasDiff => status == 'diterima' && receivable.any((l) => l.qtyReceived != null && (l.qtyReceived! - l.qty).abs() > 0.0001);
 

@@ -1,97 +1,135 @@
 -- =====================================================================
--- GUDANG TITATI - UPDATE: ACC OWNER SELEKTIF (hanya titik yang menyangkut uang)
--- Jalankan SETELAH supabase_update_alur_tanpa_acc.sql. Aman diulang.
+-- GUDANG TITATI - UPDATE: ACC OWNER SELEKTIF
+-- ACC owner hanya dipasang di titik yang menyangkut uang / tidak bisa dicek orang lain.
 --
---  1. Barang Masuk (beli grosir): langsung masuk stok, tertanda "Belum diverifikasi
---     owner" sampai di-ACC (satu per satu atau semua sekaligus).
---  2. Setor Hasil Produksi: jalan langsung kalau rendemen wajar; kalau menyimpang
---     dari biasanya -> status "Menunggu ACC", stok belum bergerak.
---  3. Permintaan Cabang: normal langsung antre di gudang; kalau jumlah jauh di atas
---     biasanya -> "Menunggu ACC".
---  Lainnya tanpa ACC (kirim ke produksi, terima barang). Koreksi stok & batal
---  jual hari lain tetap khusus owner (tidak diubah).
+-- Jalankan SETELAH: supabase_setup_gudang.sql, supabase_update_penjualan.sql,
+-- supabase_update_siap_jual.sql, supabase_update_alur_tanpa_acc.sql. Aman diulang.
+--
+-- Aturan:
+--  1. Barang Masuk   : stok langsung masuk (harga WAJIB diisi). Dokumen ditandai
+--                      "Belum diverifikasi owner" sampai owner ACC (atau tolak).
+--  2. Setor Produksi : jalan langsung jika hasil wajar menurut rendemen standar;
+--                      menyimpang / belum ada standar -> tertahan, menunggu ACC owner.
+--  3. Permintaan Cabang: normal langsung antre di gudang; jika jumlah jauh di atas
+--                      biasanya (rata-rata permintaan cabang itu) -> menunggu ACC owner.
+--  4. Lainnya tanpa ACC. Koreksi stok & pembatalan penjualan hari lain tetap hanya owner.
 -- =====================================================================
 
--- 1) Kolom baru
-alter table public.docs add column if not exists owner_check text not null default 'na';
-alter table public.docs drop constraint if exists docs_owner_check_chk;
-alter table public.docs add constraint docs_owner_check_chk check (owner_check in ('na','belum','ok','keberatan'));
-alter table public.docs add column if not exists flag_reason text not null default '';
-alter table public.docs add column if not exists verified_by_name text not null default '';
-alter table public.docs add column if not exists verified_at timestamptz;
+-- 1) KOLOM BARU
+alter table public.items add column if not exists rendemen_std numeric;
+alter table public.items drop constraint if exists items_rendemen_std_check;
+alter table public.items add constraint items_rendemen_std_check check (rendemen_std is null or rendemen_std > 0);
 
--- dokumen Barang Masuk lama: yang sudah di-ACC owner = ok, selebihnya belum diverifikasi
-update public.docs set owner_check = case when approved_at is not null then 'ok' else 'belum' end,
-       verified_by_name = case when approved_at is not null then approved_by_name else '' end,
-       verified_at = approved_at
- where type = 'masuk' and owner_check = 'na';
+alter table public.docs add column if not exists verif text not null default '';
+alter table public.docs drop constraint if exists docs_verif_check;
+alter table public.docs add constraint docs_verif_check check (verif in ('', 'menunggu', 'ok', 'tolak'));
+alter table public.docs add column if not exists acc_reason text not null default '';
 
--- 2) Pengaturan batas "menyimpang" (ubah angkanya lewat SQL Editor bila perlu)
-create table if not exists public.app_settings (key text primary key, value numeric not null);
-insert into public.app_settings (key, value) values
-  ('setor_toleransi_persen', 20),  -- rendemen setoran boleh berbeda maks 20% dari biasanya
-  ('minta_kelipatan', 2),          -- permintaan cabang > 2x biasanya = perlu ACC
-  ('min_riwayat', 3)               -- butuh minimal 3 data lama; kalau kurang, tidak ditandai
-on conflict do nothing;
-alter table public.app_settings enable row level security;
-drop policy if exists p_settings_select on public.app_settings;
-create policy p_settings_select on public.app_settings for select to authenticated using (true);
-grant select on public.app_settings to authenticated;
+-- 2) ATURAN (satu baris, diubah owner lewat fungsi set_rules)
+create table if not exists public.app_rules (
+  id int primary key default 1 check (id = 1),
+  rendemen_toleransi numeric not null default 15 check (rendemen_toleransi >= 0),
+  minta_faktor numeric not null default 2 check (minta_faktor > 1),
+  minta_hari int not null default 28 check (minta_hari > 0),
+  minta_min_data int not null default 3 check (minta_min_data >= 1)
+);
+insert into public.app_rules (id) values (1) on conflict (id) do nothing;
+alter table public.app_rules enable row level security;
+drop policy if exists p_rules_select on public.app_rules;
+create policy p_rules_select on public.app_rules for select to authenticated using (true);
+grant select on public.app_rules to authenticated;
 
-create or replace function public._setting(p_key text, p_def numeric) returns numeric
-language sql stable security definer set search_path = public as
-$$ select coalesce((select value from public.app_settings where key = p_key), p_def) $$;
-
--- 3) Deteksi menyimpang (kembali '' = wajar)
-create or replace function public._flag_setor(p_doc uuid) returns text
+create or replace function public.set_rules(p_toleransi numeric, p_faktor numeric, p_hari int, p_min int) returns void
 language plpgsql security definer set search_path = public as $$
-declare v_pakai numeric; v_hasil numeric; v_ratio numeric; v_base numeric; v_n int;
 begin
-  select coalesce(sum(qty) filter (where role = 'pakai'), 0), coalesce(sum(qty) filter (where role = 'hasil'), 0)
-    into v_pakai, v_hasil from public.doc_lines where doc_id = p_doc;
-  if v_pakai <= 0 then return ''; end if;
-  v_ratio := v_hasil / v_pakai;
-  select percentile_cont(0.5) within group (order by r), count(*) into v_base, v_n from (
-    select sum(l.qty) filter (where l.role = 'hasil') / nullif(sum(l.qty) filter (where l.role = 'pakai'), 0) as r
-      from public.docs d join public.doc_lines l on l.doc_id = d.id
-     where d.type = 'setor_jadi' and d.id <> p_doc and d.status in ('disetujui','dikirim','diterima')
-     group by d.id order by max(d.created_at) desc limit 10) x
-   where r is not null;
-  if v_n < public._setting('min_riwayat', 3) or v_base is null or v_base <= 0 then return ''; end if;
-  if abs(v_ratio - v_base) / v_base * 100 > public._setting('setor_toleransi_persen', 20) then
-    return 'Hasil ' || round(v_ratio * 100) || '% dari bahan dipakai, biasanya ' || round(v_base * 100) || '%';
+  if public.me_role() <> 'owner' then raise exception 'Hanya owner yang boleh mengubah aturan'; end if;
+  if p_toleransi is null or p_toleransi < 0 or p_toleransi > 100 then raise exception 'Toleransi harus antara 0 dan 100 persen'; end if;
+  if p_faktor is null or p_faktor <= 1 then raise exception 'Batas permintaan harus lebih dari 1 kali'; end if;
+  if p_hari is null or p_hari < 1 then raise exception 'Jumlah hari minimal 1'; end if;
+  if p_min is null or p_min < 1 then raise exception 'Minimal data minimal 1'; end if;
+  update public.app_rules
+     set rendemen_toleransi = p_toleransi, minta_faktor = p_faktor, minta_hari = p_hari, minta_min_data = p_min
+   where id = 1;
+end $$;
+
+-- 3) PENGECEKAN PENYIMPANGAN (fungsi dalam, tidak dipanggil dari aplikasi)
+-- Setoran: tiap hasil dikonversi lewat rendemen standar bahan jadinya menjadi
+-- "bahan yang seharusnya terpakai". Dibandingkan dengan bahan yang dicatat terpakai.
+-- Catatan: bahan yang dipakai dijumlahkan apa adanya, jadi satuannya sebaiknya sama (mis. kg).
+create or replace function public._setor_alasan(p_doc uuid) returns text
+language plpgsql security definer set search_path = public as $$
+declare
+  v_tol numeric; v_pakai numeric; v_exp numeric := 0; v_dev numeric; v_nostd text := ''; r record;
+begin
+  select rendemen_toleransi into v_tol from public.app_rules where id = 1;
+  v_tol := coalesce(v_tol, 15);
+  select coalesce(sum(qty), 0) into v_pakai from public.doc_lines where doc_id = p_doc and role = 'pakai';
+  for r in
+    select l.qty, i.name, i.rendemen_std
+      from public.doc_lines l join public.items i on i.id = l.item_id
+     where l.doc_id = p_doc and l.role = 'hasil'
+  loop
+    if r.rendemen_std is null or r.rendemen_std <= 0 then
+      v_nostd := v_nostd || case when v_nostd = '' then '' else ', ' end || r.name;
+    else
+      v_exp := v_exp + r.qty / r.rendemen_std;
+    end if;
+  end loop;
+  if v_nostd <> '' then
+    return 'Belum ada standar rendemen untuk ' || v_nostd;
+  end if;
+  if v_exp <= 0 then return ''; end if;
+  v_dev := (v_pakai - v_exp) / v_exp * 100;
+  if abs(v_dev) > v_tol then
+    return 'Bahan dipakai ' || trim_scale(round(v_pakai, 2))::text
+        || ', menurut standar hasil ini butuh sekitar ' || trim_scale(round(v_exp, 2))::text
+        || ' (' || case when v_dev > 0 then '+' else '' end || round(v_dev)::text
+        || '%, batas ±' || trim_scale(round(v_tol, 1))::text || '%)';
   end if;
   return '';
 end $$;
 
-create or replace function public._flag_minta(p_doc uuid) returns text
+-- Permintaan cabang: bandingkan tiap barang dengan rata-rata permintaan yang sudah dikirim
+-- oleh cabang yang sama dalam N hari terakhir. Data kurang dari minimum = tidak dianggap menyimpang.
+create or replace function public._minta_alasan(p_doc uuid, p_branch text) returns text
 language plpgsql security definer set search_path = public as $$
-declare d public.docs; r record; v_med numeric; v_n int; v_out text := '';
+declare
+  v_faktor numeric; v_hari int; v_min int; v_out text := ''; r record; v_n int; v_avg numeric;
 begin
-  select * into d from public.docs where id = p_doc;
-  for r in select l.item_id, l.qty, i.name, i.unit from public.doc_lines l join public.items i on i.id = l.item_id where l.doc_id = p_doc loop
-    select percentile_cont(0.5) within group (order by q), count(*) into v_med, v_n from (
-      select l2.qty as q from public.doc_lines l2 join public.docs d2 on d2.id = l2.doc_id
-       where d2.type = 'minta_cabang' and d2.branch = d.branch and l2.item_id = r.item_id
-         and d2.id <> p_doc and d2.status not in ('ditolak','dibatalkan')
-       order by d2.created_at desc limit 10) x;
-    if v_n >= public._setting('min_riwayat', 3) and v_med > 0 and r.qty > public._setting('minta_kelipatan', 2) * v_med then
+  select minta_faktor, minta_hari, minta_min_data into v_faktor, v_hari, v_min from public.app_rules where id = 1;
+  v_faktor := coalesce(v_faktor, 2); v_hari := coalesce(v_hari, 28); v_min := coalesce(v_min, 3);
+  for r in
+    select l.item_id, l.qty, i.name, i.unit
+      from public.doc_lines l join public.items i on i.id = l.item_id
+     where l.doc_id = p_doc
+  loop
+    select count(*), avg(l2.qty) into v_n, v_avg
+      from public.doc_lines l2 join public.docs d2 on d2.id = l2.doc_id
+     where d2.type = 'minta_cabang' and d2.branch = p_branch and d2.id <> p_doc
+       and d2.status in ('dikirim', 'diterima')
+       and d2.created_at >= now() - make_interval(days => v_hari)
+       and l2.item_id = r.item_id;
+    if v_n >= v_min and v_avg > 0 and r.qty > v_avg * v_faktor then
       v_out := v_out || case when v_out = '' then '' else '; ' end
-            || r.name || ' ' || trim(to_char(r.qty, 'FM999999990.##')) || ' ' || r.unit
-            || ' (biasanya ' || trim(to_char(v_med, 'FM999999990.##')) || ')';
+            || r.name || ' diminta ' || trim_scale(round(r.qty, 2))::text || ' ' || r.unit
+            || ', biasanya sekitar ' || trim_scale(round(v_avg, 2))::text;
     end if;
   end loop;
   return v_out;
 end $$;
 
--- 4) BUAT DOKUMEN (menggantikan versi sebelumnya)
+revoke execute on function public._setor_alasan(uuid) from public, anon, authenticated;
+revoke execute on function public._minta_alasan(uuid, text) from public, anon, authenticated;
+
+-- 4) BUAT DOKUMEN
 create or replace function public.create_doc(p_type text, p_supplier text, p_note text, p_lines jsonb)
 returns uuid language plpgsql security definer set search_path = public as $$
 declare
   v_role text := public.me_role();
   v_branch text := '';
   v_id uuid; v_no text; v_prefix text; v_l jsonb; v_item public.items;
-  v_lr text; v_qty numeric; n_pakai int := 0; n_hasil int := 0; r record; v_flag text := '';
+  v_lr text; v_qty numeric; v_price numeric; n_pakai int := 0; n_hasil int := 0; r record;
+  v_alasan text := '';
 begin
   if auth.uid() is null then raise exception 'Belum login'; end if;
   if p_type in ('masuk','kirim_produksi') then
@@ -122,6 +160,7 @@ begin
     select * into v_item from public.items where id = (v_l->>'item_id')::uuid and active;
     if not found then raise exception 'Bahan tidak ditemukan atau sudah nonaktif'; end if;
     v_lr := coalesce(nullif(v_l->>'role', ''), 'item');
+    v_price := coalesce(nullif(v_l->>'unit_price', '')::numeric, 0);
     if p_type = 'setor_jadi' then
       if v_lr = 'pakai' then
         if v_item.kind <> 'mentah' then raise exception '% bukan bahan mentah', v_item.name; end if;
@@ -136,9 +175,10 @@ begin
       v_lr := 'item';
       if p_type in ('masuk','kirim_produksi') and v_item.kind <> 'mentah' then raise exception '% bukan bahan mentah', v_item.name; end if;
       if p_type = 'minta_cabang' and v_item.kind <> 'jadi' and not v_item.siap_jual then raise exception '% bukan bahan jadi atau barang siap jual', v_item.name; end if;
+      if p_type = 'masuk' and v_price <= 0 then raise exception 'Harga satuan % wajib diisi', v_item.name; end if;
     end if;
     insert into public.doc_lines (doc_id, item_id, role, qty, unit_price)
-    values (v_id, v_item.id, v_lr, v_qty, coalesce(nullif(v_l->>'unit_price', '')::numeric, 0));
+    values (v_id, v_item.id, v_lr, v_qty, v_price);
   end loop;
 
   if p_type = 'setor_jadi' and (n_pakai = 0 or n_hasil = 0) then
@@ -147,77 +187,42 @@ begin
   perform public._log(v_id, 'dibuat', '');
 
   if p_type = 'masuk' then
-    -- stok langsung bertambah; harga & pembelian menunggu verifikasi owner
+    -- stok langsung bertambah; owner memverifikasi harga/pembelian menyusul
     for r in select item_id, qty from public.doc_lines where doc_id = v_id loop
       insert into public.stock_ledger (location, item_id, delta, doc_id, by_name) values ('gudang', r.item_id, r.qty, v_id, public.me_name());
     end loop;
     update public.doc_lines set qty_received = qty where doc_id = v_id;
-    update public.docs set status = 'diterima', received_at = now(), received_by_name = public.me_name(), owner_check = 'belum' where id = v_id;
-    perform public._log(v_id, 'stok gudang bertambah (belum diverifikasi owner)', '');
+    update public.docs set status = 'diterima', received_at = now(), received_by_name = public.me_name(), verif = 'menunggu' where id = v_id;
+    perform public._log(v_id, 'stok gudang bertambah', 'belum diverifikasi owner');
   elsif p_type = 'kirim_produksi' then
     update public.docs set status = 'disetujui' where id = v_id;
     perform public.send_doc(v_id);
-  else
-    v_flag := case when p_type = 'setor_jadi' then public._flag_setor(v_id) else public._flag_minta(v_id) end;
-    if v_flag <> '' then
-      -- menyimpang: tetap 'diajukan' (stok belum bergerak) sampai owner memutuskan
-      update public.docs set flag_reason = v_flag where id = v_id;
-      perform public._log(v_id, 'perlu ACC owner (menyimpang)', v_flag);
-    else
+  elsif p_type = 'setor_jadi' then
+    v_alasan := public._setor_alasan(v_id);
+    if v_alasan = '' then
       update public.docs set status = 'disetujui' where id = v_id;
-      if p_type = 'setor_jadi' then perform public.send_doc(v_id); end if;
+      perform public.send_doc(v_id);
+    else
+      update public.docs set status = 'diajukan', acc_reason = v_alasan where id = v_id;
+      perform public._log(v_id, 'menunggu ACC owner (menyimpang)', v_alasan);
+    end if;
+  else
+    v_alasan := public._minta_alasan(v_id, v_branch);
+    if v_alasan = '' then
+      update public.docs set status = 'disetujui' where id = v_id;   -- antre di gudang
+    else
+      update public.docs set status = 'diajukan', acc_reason = v_alasan where id = v_id;
+      perform public._log(v_id, 'menunggu ACC owner (jumlah jauh di atas biasanya)', v_alasan);
     end if;
   end if;
   return v_id;
 end $$;
 
--- 5) Owner verifikasi Barang Masuk
-create or replace function public.verify_masuk(p_doc uuid, p_action text, p_note text default '') returns void
-language plpgsql security definer set search_path = public as $$
-declare d public.docs; v_note text := coalesce(trim(p_note), '');
-begin
-  if public.me_role() <> 'owner' then raise exception 'Hanya owner yang boleh memverifikasi'; end if;
-  select * into d from public.docs where id = p_doc for update;
-  if not found or d.type <> 'masuk' then raise exception 'Dokumen Barang Masuk tidak ditemukan'; end if;
-  if d.owner_check not in ('belum','keberatan') then raise exception 'Dokumen ini sudah diverifikasi'; end if;
-  if p_action = 'acc' then
-    update public.docs set owner_check = 'ok', owner_note = v_note, verified_by_name = public.me_name(), verified_at = now() where id = p_doc;
-    perform public._log(p_doc, 'diverifikasi owner', v_note);
-  elsif p_action = 'keberatan' then
-    if v_note = '' then raise exception 'Alasan keberatan wajib diisi'; end if;
-    update public.docs set owner_check = 'keberatan', owner_note = v_note where id = p_doc;
-    perform public._log(p_doc, 'owner keberatan', v_note);
-  else
-    raise exception 'Aksi tidak dikenal';
-  end if;
-end $$;
-
-create or replace function public.verify_semua_masuk() returns int
-language plpgsql security definer set search_path = public as $$
-declare v_n int;
-begin
-  if public.me_role() <> 'owner' then raise exception 'Hanya owner yang boleh memverifikasi'; end if;
-  with u as (
-    update public.docs set owner_check = 'ok', verified_by_name = public.me_name(), verified_at = now()
-     where type = 'masuk' and owner_check = 'belum' returning id
-  ), l as (
-    insert into public.doc_log (doc_id, by_name, by_role, action)
-    select id, public.me_name(), 'owner', 'diverifikasi owner (ACC semua)' from u returning 1
-  ) select count(*) into v_n from l;
-  return v_n;
-end $$;
-
--- 6) Izin
-revoke execute on function public.create_doc(text, text, text, jsonb) from public, anon;
-revoke execute on function public.verify_masuk(uuid, text, text) from public, anon;
-revoke execute on function public.verify_semua_masuk() from public, anon;
-revoke execute on function public._flag_setor(uuid) from public, anon, authenticated;
-revoke execute on function public._flag_minta(uuid) from public, anon, authenticated;
-grant execute on function public.create_doc(text, text, text, jsonb) to authenticated;
-grant execute on function public.verify_masuk(uuid, text, text) to authenticated;
-grant execute on function public.verify_semua_masuk() to authenticated;
-
--- 6b) Barang Masuk lama yang di-ACC lewat jalur lama ikut tercatat terverifikasi
+-- 5) KEPUTUSAN OWNER
+-- a) Barang masuk yang belum diverifikasi (stok sudah masuk): ACC = harga/pembelian disetujui.
+--    Tolak = ditandai ditolak beserta alasan, stok TIDAK ditarik (barang sudah ada secara fisik);
+--    owner menindaklanjuti ke gudang, dan jika perlu mengoreksi stok.
+-- b) Dokumen berstatus "diajukan" (setoran / permintaan menyimpang, atau dokumen lama): seperti sebelumnya.
 create or replace function public.owner_decide(p_doc uuid, p_action text, p_note text default '', p_lines jsonb default null)
 returns void language plpgsql security definer set search_path = public as $$
 declare d public.docs; v_changed boolean := false; r record; v_note text := coalesce(trim(p_note), '');
@@ -225,6 +230,21 @@ begin
   if public.me_role() <> 'owner' then raise exception 'Hanya owner yang boleh memutuskan'; end if;
   select * into d from public.docs where id = p_doc for update;
   if not found then raise exception 'Dokumen tidak ditemukan'; end if;
+
+  if d.type = 'masuk' and d.verif = 'menunggu' then
+    if p_action = 'tolak' then
+      if v_note = '' then raise exception 'Alasan penolakan wajib diisi'; end if;
+      update public.docs set verif = 'tolak', owner_note = v_note, approved_by_name = public.me_name(), approved_at = now() where id = p_doc;
+      perform public._log(p_doc, 'pembelian ditolak owner', v_note);
+    elsif p_action = 'acc' then
+      update public.docs set verif = 'ok', owner_note = v_note, approved_by_name = public.me_name(), approved_at = now() where id = p_doc;
+      perform public._log(p_doc, 'pembelian diverifikasi owner', v_note);
+    else
+      raise exception 'Aksi tidak dikenal';
+    end if;
+    return;
+  end if;
+
   if d.status <> 'diajukan' then raise exception 'Dokumen sudah diproses (status: %)', d.status; end if;
 
   if p_action = 'tolak' then
@@ -236,20 +256,28 @@ begin
     update public.docs set status = 'disetujui', owner_note = v_note, approved_by_name = public.me_name(), approved_at = now() where id = p_doc;
     perform public._log(p_doc, case when v_changed then 'disetujui (jumlah diubah owner)' else 'disetujui' end, v_note);
     if d.type = 'masuk' then
-      -- barang masuk: setelah ACC langsung menambah stok gudang
+      -- dokumen barang masuk lama (sebelum alur tanpa ACC): setelah ACC baru menambah stok
       for r in select item_id, qty from public.doc_lines where doc_id = p_doc loop
         insert into public.stock_ledger (location, item_id, delta, doc_id, by_name) values ('gudang', r.item_id, r.qty, p_doc, public.me_name());
       end loop;
       update public.doc_lines set qty_received = qty where doc_id = p_doc;
       update public.docs set status = 'diterima', received_at = now(), received_by_name = d.created_by_name where id = p_doc;
       perform public._log(p_doc, 'stok gudang bertambah', '');
-      update public.docs set owner_check = 'ok', verified_by_name = public.me_name(), verified_at = now() where id = p_doc;
     end if;
   else
     raise exception 'Aksi tidak dikenal';
   end if;
 end $$;
+
+-- 6) IZIN
+revoke execute on function public.create_doc(text, text, text, jsonb) from public, anon;
 revoke execute on function public.owner_decide(uuid, text, text, jsonb) from public, anon;
+revoke execute on function public.set_rules(numeric, numeric, int, int) from public, anon;
+grant execute on function public.create_doc(text, text, text, jsonb) to authenticated;
 grant execute on function public.owner_decide(uuid, text, text, jsonb) to authenticated;
+grant execute on function public.set_rules(numeric, numeric, int, int) to authenticated;
 
 notify pgrst, 'reload schema';
+
+-- LANGKAH TERAKHIR (di aplikasi): login Owner -> Master -> Bahan jadi -> ketuk tiap bahan jadi
+-- -> isi "Rendemen standar". Selama belum diisi, setoran bahan jadi itu selalu minta ACC owner.

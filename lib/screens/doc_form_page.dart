@@ -61,7 +61,12 @@ class _DocFormPageState extends State<DocFormPage> {
         setState(() => error = 'Isi jumlah untuk ${l.item.name}');
         return;
       }
-      payload.add({'item_id': l.item.id, 'qty': q, 'role': l.role, 'unit_price': parseQty(l.price.text) ?? 0});
+      final pr = parseQty(l.price.text) ?? 0;
+      if (widget.type == 'masuk' && pr <= 0) {
+        setState(() => error = 'Isi harga satuan untuk ${l.item.name}');
+        return;
+      }
+      payload.add({'item_id': l.item.id, 'qty': q, 'role': l.role, 'unit_price': pr});
     }
     if (payload.isEmpty) {
       setState(() => error = 'Tambahkan minimal satu bahan');
@@ -80,8 +85,8 @@ class _DocFormPageState extends State<DocFormPage> {
       error = null;
     });
     try {
-      final flagged = await s.createDoc(widget.type, supplier.text.trim(), note.text.trim(), payload);
-      if (mounted) Navigator.pop(context, flagged ? 'acc' : 'ok');
+      final doc = await s.createDoc(widget.type, supplier.text.trim(), note.text.trim(), payload);
+      if (mounted) Navigator.pop<Object>(context, doc ?? true);
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -167,10 +172,12 @@ class _DocFormPageState extends State<DocFormPage> {
           decoration: cardDeco(color: const Color(0xFFEAF2FF)),
           child: Text(
               t == 'masuk'
-                  ? 'Stok gudang langsung bertambah setelah disimpan. Owner memantau.'
+                  ? 'Stok gudang langsung bertambah setelah disimpan. Harga wajib diisi: owner akan memverifikasi harga dan pembelian.'
                   : (t == 'minta_cabang'
-                      ? 'Permintaan masuk ke gudang. Gudang akan mengirim sesuai stok yang ada.'
-                      : 'Setelah disimpan, barang dianggap terkirim dan stok pengirim berkurang. Penerima menekan Terima.'),
+                      ? 'Permintaan masuk ke gudang. Jika jumlahnya jauh di atas biasanya, owner perlu ACC dulu.'
+                      : (t == 'setor_jadi'
+                          ? 'Jika hasil wajar sesuai standar, setoran langsung terkirim dan gudang menekan Terima. Jika jauh dari standar, owner perlu ACC dulu.'
+                          : 'Setelah disimpan, barang dianggap terkirim dan stok pengirim berkurang. Penerima menekan Terima.')),
               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: navy)),
         ),
         if (t == 'masuk') ...[

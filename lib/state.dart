@@ -27,6 +27,9 @@ class AppState extends ChangeNotifier {
   List<SaleEntry> sales = [];
   List<RekapRow> rekap = [];
   String? salesError;
+  AppRules rules = const AppRules();
+  bool rulesLoaded = false;
+  String? rulesError;
   Timer? _timer;
   bool _started = false;
   bool _refreshing = false;
@@ -59,6 +62,9 @@ class AppState extends ChangeNotifier {
     sales = [];
     rekap = [];
     salesError = null;
+    rules = const AppRules();
+    rulesLoaded = false;
+    rulesError = null;
   }
 
   Future<void> refresh({bool silent = false}) async {
@@ -91,6 +97,7 @@ class AppState extends ChangeNotifier {
         final st = await sb.from('v_stock').select();
         stock = [for (final e in st) StockRow.fromJson(Map<String, dynamic>.from(e))];
         await _loadSales();
+        await _loadRules();
         if (me!.role == 'owner') {
           final pr = await sb.from('profiles').select('branch, role');
           profileBranches = {
@@ -125,6 +132,18 @@ class AppState extends ChangeNotifier {
       salesError = null;
     } catch (e) {
       salesError = errText(e);
+    }
+  }
+
+  /// Aturan ACC dimuat terpisah supaya aplikasi tetap jalan walau SQL ACC selektif belum dijalankan.
+  Future<void> _loadRules() async {
+    try {
+      final r = await sb.from('app_rules').select().eq('id', 1).maybeSingle();
+      if (r != null) rules = AppRules.fromJson(Map<String, dynamic>.from(r));
+      rulesLoaded = true;
+      rulesError = null;
+    } catch (e) {
+      rulesError = errText(e);
     }
   }
 
@@ -215,8 +234,8 @@ class AppState extends ChangeNotifier {
 
   /// Teks tindakan yang menunggu akun ini pada dokumen (null = tidak ada).
   String? actionFor(Doc d) {
-    if (isOwner && d.status == 'diajukan') return 'Perlu ACC (menyimpang)';
-    if (isOwner && d.type == 'masuk' && d.ownerCheck == 'belum') return 'Verifikasi pembelian';
+    if (isOwner && d.belumVerif) return 'Verifikasi pembelian';
+    if (isOwner && d.status == 'diajukan') return 'Perlu ACC';
     if (d.status == 'disetujui' && d.type != 'masuk' && isSender(d)) return 'Siap dikirim';
     if (d.status == 'dikirim' && isReceiver(d)) return 'Konfirmasi terima';
     return null;
@@ -224,11 +243,13 @@ class AppState extends ChangeNotifier {
 
   List<Doc> get myTasks => docs.where((d) => actionFor(d) != null).toList();
 
+  /// Pembelian (Barang Masuk) yang stoknya sudah masuk dan menunggu verifikasi owner.
+  List<Doc> get pembelianBelumVerif => docs.where((d) => d.belumVerif).toList();
+
   /// Untuk owner (memantau): selisih terima 14 hari terakhir, dan dokumen tertahan lebih dari 24 jam.
   List<Doc> get ownerAlerts {
     final now = DateTime.now();
     return docs.where((d) {
-      if (d.type == 'masuk' && d.ownerCheck == 'keberatan') return true;
       if (d.hasDiff) return now.difference(d.receivedAt ?? d.createdAt).inDays < 14;
       if (d.status == 'dikirim' && d.sentAt != null) return now.difference(d.sentAt!).inHours >= 24;
       if (d.status == 'disetujui' && d.type == 'minta_cabang') return now.difference(d.createdAt).inHours >= 24;
@@ -237,22 +258,16 @@ class AppState extends ChangeNotifier {
   }
 
   // ---------- aksi (semua lewat fungsi database) ----------
-  /// Mengembalikan true bila dokumen menyimpang dan menunggu ACC owner.
-  Future<bool> createDoc(String type, String supplier, String note, List<Map<String, dynamic>> lines) async {
+  /// Mengembalikan dokumen yang baru dibuat (statusnya menunjukkan apakah langsung jalan atau menunggu ACC owner).
+  Future<Doc?> createDoc(String type, String supplier, String note, List<Map<String, dynamic>> lines) async {
     final id = await sb.rpc('create_doc', params: {'p_type': type, 'p_supplier': supplier, 'p_note': note, 'p_lines': lines});
     await refresh(silent: true);
-    return docById('$id')?.status == 'diajukan';
+    return id is String ? docById(id) : null;
   }
 
-  Future<void> verifyMasuk(String docId, String action, {String note = ''}) async {
-    await sb.rpc('verify_masuk', params: {'p_doc': docId, 'p_action': action, 'p_note': note});
+  Future<void> setRules(double toleransi, double faktor, int hari, int minData) async {
+    await sb.rpc('set_rules', params: {'p_toleransi': toleransi, 'p_faktor': faktor, 'p_hari': hari, 'p_min': minData});
     await refresh(silent: true);
-  }
-
-  Future<int> verifyAllMasuk() async {
-    final n = await sb.rpc('verify_semua_masuk');
-    await refresh(silent: true);
-    return n is num ? n.toInt() : 0;
   }
 
   Future<void> ownerDecide(String docId, String action, {String note = '', List<Map<String, dynamic>>? lines}) async {
@@ -313,11 +328,16 @@ class AppState extends ChangeNotifier {
     return it;
   }
 
-  Future<void> updateItem(String id, {required String name, required String category, required String unit, required bool active, bool? siapJual}) async {
-    await sb
-        .from('items')
-        .update({'name': name.trim(), 'category': category.trim(), 'unit': unit.trim(), 'active': active, if (siapJual != null) 'siap_jual': siapJual})
-        .eq('id', id);
+  Future<void> updateItem(String id,
+      {required String name, required String category, required String unit, required bool active, bool? siapJual, double? rendemenStd, bool setRendemen = false}) async {
+    await sb.from('items').update({
+      'name': name.trim(),
+      'category': category.trim(),
+      'unit': unit.trim(),
+      'active': active,
+      if (siapJual != null) 'siap_jual': siapJual,
+      if (setRendemen) 'rendemen_std': rendemenStd,
+    }).eq('id', id);
     await refresh(silent: true);
   }
 
