@@ -100,6 +100,7 @@ NotaData buildNota(Doc d) {
       s2 = NotaSign('Owner', d.verif == 'ok' ? d.approvedByName : '');
       break;
     case 'minta_cabang':
+    case 'kirim_cabang':
       title = 'Surat Jalan';
       parties = [
         ['Dari', 'Gudang'],

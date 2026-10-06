@@ -62,7 +62,7 @@ class _DocsPageState extends State<DocsPage> {
   String type = 'semua';
 
   static const statuses = ['semua', 'diajukan', 'belum_verif', 'disetujui', 'dikirim', 'diterima', 'ditolak', 'selisih'];
-  static const types = ['semua', 'masuk', 'kirim_produksi', 'setor_jadi', 'minta_cabang'];
+  static const types = ['semua', 'masuk', 'kirim_produksi', 'setor_jadi', 'minta_cabang', 'kirim_cabang'];
 
   Widget _chips(List<String> values, String current, String Function(String) label, ValueChanged<String> onPick) {
     return SingleChildScrollView(

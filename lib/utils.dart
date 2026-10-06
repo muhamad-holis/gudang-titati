@@ -52,6 +52,8 @@ String typeLabel(String t) {
       return 'Setor Bahan Jadi';
     case 'minta_cabang':
       return 'Permintaan Cabang';
+    case 'kirim_cabang':
+      return 'Kirim ke Cabang';
     default:
       return t;
   }

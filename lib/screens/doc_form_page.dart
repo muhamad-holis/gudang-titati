@@ -31,6 +31,7 @@ class _DocFormPageState extends State<DocFormPage> {
   final note = TextEditingController();
   bool saving = false;
   String? error;
+  String? branch; // cabang tujuan (khusus Kirim ke Cabang)
 
   @override
   void dispose() {
@@ -80,12 +81,17 @@ class _DocFormPageState extends State<DocFormPage> {
       setState(() => error = 'Isi nama grosir / supplier');
       return;
     }
+    if (widget.type == 'kirim_cabang' && (branch == null || branch!.isEmpty)) {
+      setState(() => error = 'Pilih cabang tujuan');
+      return;
+    }
     setState(() {
       saving = true;
       error = null;
     });
     try {
-      final doc = await s.createDoc(widget.type, supplier.text.trim(), note.text.trim(), payload);
+      // untuk Kirim ke Cabang, kolom "supplier" membawa nama cabang tujuan
+      final doc = await s.createDoc(widget.type, widget.type == 'kirim_cabang' ? branch! : supplier.text.trim(), note.text.trim(), payload);
       if (mounted) Navigator.pop<Object>(context, doc ?? true);
     } catch (e) {
       if (mounted) {
@@ -173,7 +179,9 @@ class _DocFormPageState extends State<DocFormPage> {
           child: Text(
               t == 'masuk'
                   ? 'Stok gudang langsung bertambah setelah disimpan. Harga wajib diisi: owner akan memverifikasi harga dan pembelian.'
-                  : (t == 'minta_cabang'
+                  : (t == 'kirim_cabang'
+                      ? 'Kirim barang langsung ke cabang tanpa produksi dan tanpa ACC. Stok gudang langsung berkurang, cabang menekan Terima.'
+                      : t == 'minta_cabang'
                       ? 'Permintaan masuk ke gudang. Jika jumlahnya jauh di atas biasanya, owner perlu ACC dulu.'
                       : (t == 'setor_jadi'
                           ? 'Jika hasil wajar sesuai standar, setoran langsung terkirim dan gudang menekan Terima. Jika jauh dari standar, owner perlu ACC dulu.'
@@ -189,6 +197,20 @@ class _DocFormPageState extends State<DocFormPage> {
         if (t == 'setor_jadi') ...[
           _section(s, 'Bahan mentah yang dipakai', 'pakai', 'mentah', stockLoc: 'produksi', noSiap: true),
           _section(s, 'Hasil jadi yang disetor', 'hasil', 'jadi'),
+        ],
+        if (t == 'kirim_cabang') ...[
+          const SizedBox(height: 12),
+          if (s.profileBranches.isEmpty)
+            const Text('Daftar cabang belum bisa dimuat. Pastikan supabase_update_kirim_cabang.sql sudah dijalankan, lalu tarik layar untuk menyegarkan.',
+                style: TextStyle(color: red, fontWeight: FontWeight.w600))
+          else
+            DropdownButtonFormField<String>(
+              value: branch,
+              decoration: const InputDecoration(labelText: 'Kirim ke cabang', border: OutlineInputBorder()),
+              items: [for (final b in s.profileBranches) DropdownMenuItem(value: b, child: Text(b))],
+              onChanged: (v) => setState(() => branch = v),
+            ),
+          _section(s, 'Barang yang dikirim', 'item', 'jadi', stockLoc: 'gudang', sellable: true),
         ],
         if (t == 'minta_cabang') _section(s, 'Barang yang diminta', 'item', 'jadi', sellable: true),
         const SizedBox(height: 14),

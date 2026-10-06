@@ -12,6 +12,11 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      KEYSTORE_B64: ${{ secrets.KEYSTORE_BASE64 }}
+      KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
 
@@ -51,8 +56,31 @@ jobs:
       - name: Build APK
         run: |
           flutter build apk --release \
+            --build-number=${{ github.run_number }} \
             --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
             --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+
+      - name: Tanda tangani APK dengan keystore tetap (agar bisa update tanpa uninstall)
+        if: env.KEYSTORE_B64 != ''
+        run: |
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          BT="$(ls -d "$SDK"/build-tools/* | sort -V | tail -1)"
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          "$BT/zipalign" -p -f 4 "$APK" "$RUNNER_TEMP/aligned.apk"
+          "$BT/apksigner" sign \
+            --ks "$RUNNER_TEMP/release.jks" \
+            --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass env:KEYSTORE_PASSWORD \
+            --key-pass env:KEY_PASSWORD \
+            --out "$RUNNER_TEMP/signed.apk" "$RUNNER_TEMP/aligned.apk"
+          "$BT/apksigner" verify --print-certs "$RUNNER_TEMP/signed.apk" | head -3
+          mv "$RUNNER_TEMP/signed.apk" "$APK"
+          rm -f "$RUNNER_TEMP/release.jks"
+
+      - name: Peringatan jika keystore belum dipasang
+        if: env.KEYSTORE_B64 == ''
+        run: echo "::warning::Secret KEYSTORE_BASE64 belum diisi. APK memakai kunci acak, update harus uninstall dulu."
 
       - uses: actions/upload-artifact@v4
         with:

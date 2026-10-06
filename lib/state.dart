@@ -105,6 +105,12 @@ class AppState extends ChangeNotifier {
               if (e['role'] == 'cabang' && ((e['branch'] as String?) ?? '').isNotEmpty) e['branch'] as String,
           }.toList()
             ..sort();
+        } else if (me!.role == 'gudang') {
+          // gudang tidak boleh membaca profil; daftar cabang tujuan diambil lewat fungsi database
+          try {
+            final r = await sb.rpc('list_cabang');
+            profileBranches = [for (final e in (r as List)) e.toString()]..sort();
+          } catch (_) {}
         }
       }
       loadError = null;
@@ -185,7 +191,7 @@ class AppState extends ChangeNotifier {
     final br = <String>{
       ...profileBranches,
       ...stock.map((r) => r.location).where((l) => l != 'gudang' && l != 'produksi'),
-      ...docs.where((d) => d.type == 'minta_cabang' && d.branch.isNotEmpty).map((d) => d.branch),
+      ...docs.where((d) => (d.type == 'minta_cabang' || d.type == 'kirim_cabang') && d.branch.isNotEmpty).map((d) => d.branch),
     }.toList()
       ..sort();
     return ['gudang', 'produksi', ...br];
@@ -219,7 +225,7 @@ class AppState extends ChangeNotifier {
   List<KurangRow> kurangFor(String branch, DateTime from, DateTime to) {
     final m = <String, KurangRow>{};
     for (final d in docs) {
-      if (d.type != 'minta_cabang' || d.branch != branch || d.status != 'diterima' || d.receivedAt == null) continue;
+      if ((d.type != 'minta_cabang' && d.type != 'kirim_cabang') || d.branch != branch || d.status != 'diterima' || d.receivedAt == null) continue;
       final r = d.receivedAt!;
       final day = DateTime(r.year, r.month, r.day);
       if (day.isBefore(from) || day.isAfter(to)) continue;
@@ -243,12 +249,12 @@ class AppState extends ChangeNotifier {
   }
 
   bool isSender(Doc d) =>
-      ((d.type == 'kirim_produksi' || d.type == 'minta_cabang') && role == 'gudang') || (d.type == 'setor_jadi' && role == 'produksi');
+      ((d.type == 'kirim_produksi' || d.type == 'minta_cabang' || d.type == 'kirim_cabang') && role == 'gudang') || (d.type == 'setor_jadi' && role == 'produksi');
 
   bool isReceiver(Doc d) =>
       (d.type == 'kirim_produksi' && role == 'produksi') ||
       (d.type == 'setor_jadi' && role == 'gudang') ||
-      (d.type == 'minta_cabang' && role == 'cabang' && me?.branch == d.branch);
+      ((d.type == 'minta_cabang' || d.type == 'kirim_cabang') && role == 'cabang' && me?.branch == d.branch);
 
   bool isCreator(Doc d) => me != null && d.createdBy == me!.id;
 

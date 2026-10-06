@@ -31,6 +31,14 @@ ACC owner hanya dipasang di titik yang menyangkut uang atau tidak bisa dicek ora
 6. Cabang: Catat Penjualan (tab Jual hanya tampil di akun cabang). Rekap penjualan menampilkan per barang: Masuk, Terjual, dan Sisa (stok cabang sekarang). Kotak merah "Barang kurang diterima" muncul hanya jika barang yang diterima cabang lebih sedikit dari yang dikirim gudang. Pembatalan catatan penjualan hari lain hanya bisa dilakukan owner.
 7. Owner: memantau semua dokumen, stok, dan penjualan. Beranda owner menampilkan "Perlu dipantau" (selisih terima / tertahan > 24 jam). Koreksi stok hanya owner (wajib alasan).
 
+### Kirim ke Cabang (gudang kirim langsung)
+Selain menunggu Permintaan Cabang, kepala gudang punya tombol **Kirim ke Cabang** di Beranda: pilih cabang tujuan, pilih barang (bahan jadi, barang siap jual, atau barang jalur "langsung ke cabang"/"keduanya"), lalu Simpan & Kirim. Tanpa ACC owner, tanpa produksi. Stok gudang langsung berkurang, cabang menekan Terima, dan selisih terima tampil merah di owner. Notanya berupa Surat Jalan.
+Jalankan `supabase_update_kirim_cabang.sql` PALING AKHIR (urutan: setup, penjualan, siap_jual, alur_tanpa_acc, acc_selektif, master_data, kirim_cabang). Jangan menjalankan ulang file master_data atau acc_selektif sesudahnya.
+
+### Update aplikasi tanpa uninstall (tanda tangan tetap)
+Android hanya mau menimpa aplikasi lama jika tanda tangan APK sama dan nomor build lebih tinggi. Workflow sudah menaikkan nomor build otomatis (nomor run GitHub) dan menandatangani APK dengan keystore tetap dari GitHub Secrets: `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`. Buat keystore SEKALI saja, simpan cadangannya, jangan commit ke repo. Jika keystore hilang, aplikasi tidak bisa di-update lagi tanpa uninstall.
+APK pertama yang memakai keystore ini tetap harus meng-uninstall versi lama satu kali (data aman di Supabase). Setelah itu semua update bisa langsung dipasang di atasnya.
+
 ### Master data bahan dan jalur barang
 Jalankan `supabase_master_data.sql` (paling akhir) untuk memasukkan 51 barang dari PDF master data. Tiap bahan mentah punya **jalur**:
 - **Diolah di produksi** (6): daging sapi, lemak sapi, tapioka, sagu, es batu, baking powder. Hanya muncul di pilihan Kirim ke Produksi.

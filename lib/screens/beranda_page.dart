@@ -147,9 +147,13 @@ class BerandaPage extends StatelessWidget {
     Widget buttons;
     switch (me.role) {
       case 'gudang':
-        buttons = Row(children: [
-          _btn(context, Icons.add_box_outlined, 'Barang Masuk', 'masuk'),
-          _btn(context, Icons.local_shipping_outlined, 'Kirim ke Produksi', 'kirim_produksi'),
+        buttons = Column(children: [
+          Row(children: [
+            _btn(context, Icons.add_box_outlined, 'Barang Masuk', 'masuk'),
+            _btn(context, Icons.soup_kitchen_outlined, 'Kirim ke Produksi', 'kirim_produksi'),
+          ]),
+          const SizedBox(height: 8),
+          Row(children: [_btn(context, Icons.local_shipping_outlined, 'Kirim ke Cabang', 'kirim_cabang')]),
         ]);
         break;
       case 'produksi':

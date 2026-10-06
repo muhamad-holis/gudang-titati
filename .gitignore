@@ -6,3 +6,7 @@ build/
 *.iml
 .idea/
 local.properties
+
+*.jks
+*.keystore
+key.properties
