@@ -73,3 +73,13 @@ Jalankan `supabase_update_nilai_gudang.sql` (boleh kapan saja, tidak menimpa fun
 - Harga rata-rata = total (qty x harga) semua Barang Masuk dibagi total qty masuk. Barang yang keluar ke produksi atau cabang mengurangi stok, sehingga nilai ikut turun. Koreksi stok juga ikut mengubah nilai.
 - Yang dinilai: bahan mentah dan barang siap jual. Bahan jadi hasil produksi tidak dinilai (tidak punya harga grosir, dan nilai bahannya sudah terhitung).
 - Hanya akun owner yang bisa membaca (dicek di fungsi database).
+
+### Nilai stok per periode, tren, laporan PDF, stok minimum (khusus owner, kecuali stok minimum)
+Jalankan `supabase_update_nilai_periode.sql` (setelah `supabase_update_nilai_gudang.sql`, aman diulang). File ini menambah kolom `items.stok_min` dan 3 fungsi database; fungsi lama tidak diubah.
+- Beranda owner -> kartu **Nilai stok gudang** -> pilih periode di bagian atas: Sekarang (tampilan lama), Hari ini, Kemarin, 7 hari, 30 hari, atau Pilih tanggal (kalender rentang).
+- Tampilan periode: nilai awal, barang masuk (+), barang keluar (-), perubahan harga (bila ada), nilai akhir, dan selisih. Masuk dan keluar sudah termasuk koreksi stok.
+- Harga tiap tanggal = rata-rata beli (Barang Masuk berstatus diterima) sampai tanggal itu; bila belum ada pembelian sebelumnya dipakai rata-rata keseluruhan. Tanggal dihitung WIB.
+- Grafik **Tren nilai stok** muncul untuk rentang 2 sampai 93 hari; sentuh/geser untuk melihat nilai tiap hari.
+- **Paling banyak bergerak** dan **Ada stok tapi tidak bergerak** dihitung dari periode yang dipilih.
+- Ikon PDF di pojok kanan atas: bagikan atau cetak laporan periode yang sedang dipilih (Sekarang = laporan hari ini).
+- **Stok minimum**: Master -> ketuk barang -> isi *Stok minimum gudang*. Bila stok gudang sama dengan atau di bawah angka itu, Beranda owner dan kepala gudang menampilkan kartu **stok menipis**, dan tab Stok (Gudang) menandai barangnya. Kosong = tidak dipantau. Hanya owner yang bisa mengubah batas minimum.

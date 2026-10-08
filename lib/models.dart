@@ -26,6 +26,9 @@ class Item {
 
   /// Boleh diminta cabang langsung dari gudang tanpa produksi (bahan/perlengkapan cabang, tidak dijual satuan).
   final bool keCabang;
+
+  /// Batas stok minimum di gudang. 0 = tidak dipantau.
+  final double stokMin;
   Item({
     required this.id,
     required this.name,
@@ -37,6 +40,7 @@ class Item {
     this.rendemenStd,
     this.untukProduksi = true,
     this.keCabang = false,
+    this.stokMin = 0,
   });
 
   /// Jalur bahan mentah: 'olah' (hanya produksi), 'cabang' (langsung ke cabang), 'dua' (keduanya).
@@ -52,6 +56,7 @@ class Item {
         rendemenStd: j['rendemen_std'] == null ? null : toD(j['rendemen_std']),
         untukProduksi: (j['untuk_produksi'] as bool?) ?? true,
         keCabang: (j['ke_cabang'] as bool?) ?? false,
+        stokMin: j['stok_min'] == null ? 0 : toD(j['stok_min']),
       );
 }
 
@@ -306,4 +311,13 @@ class RekapSum {
   /// Masuk dikurangi terjual. 0 = pas, positif = masih sisa, negatif = terjual lebih banyak dari yang masuk.
   double get selisih => masuk - terjual;
   bool get pas => selisih.abs() < 0.0001;
+}
+
+
+/// Barang gudang yang stoknya menipis (<= stok minimum).
+class LowStock {
+  final Item item;
+  final double qty;
+  LowStock(this.item, this.qty);
+  double get kurang => item.stokMin - qty;
 }

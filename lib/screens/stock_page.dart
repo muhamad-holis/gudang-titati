@@ -101,7 +101,15 @@ class _StockPageState extends State<StockPage> {
           child: ListTile(
             dense: true,
             title: Text(r.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-            subtitle: Text(r.category),
+            subtitle: Builder(builder: (_) {
+              final it = s.itemById(r.itemId);
+              final low = cur == 'gudang' && it != null && it.stokMin > 0 && r.qty <= it.stokMin;
+              if (!low) return Text(r.category);
+              return Text.rich(TextSpan(children: [
+                TextSpan(text: '${r.category} • '),
+                TextSpan(text: 'menipis (min ${fmtQty(it.stokMin)})', style: const TextStyle(color: orange, fontWeight: FontWeight.w700)),
+              ]));
+            }),
             trailing: Row(mainAxisSize: MainAxisSize.min, children: [
               Text('${fmtQty(r.qty)} ${r.unit}', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: r.qty < 0 ? red : navy)),
               if (s.isOwner)

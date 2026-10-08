@@ -9,6 +9,7 @@ import 'nilai_gudang_page.dart';
 import 'docs_page.dart';
 import 'sales_form_page.dart';
 import 'sales_page.dart';
+import 'stok_menipis_page.dart';
 
 class BerandaPage extends StatelessWidget {
   const BerandaPage({super.key});
@@ -165,6 +166,39 @@ class BerandaPage extends StatelessWidget {
     );
   }
 
+  Widget _menipisCard(BuildContext context, AppState s) {
+    final list = s.stokMenipis;
+    if (list.isEmpty) return const SizedBox.shrink();
+    final habis = list.where((l) => l.qty <= 0).length;
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      decoration: cardDeco(color: const Color(0xFFFFF4E0)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StokMenipisPage())),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(children: [
+            const Icon(Icons.warning_amber_rounded, size: 34, color: orange),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('${list.length} barang stok menipis', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: orange)),
+                Text(
+                  '${list.take(3).map((l) => l.item.name).join(', ')}${list.length > 3 ? ', dll' : ''}${habis > 0 ? ' • $habis habis' : ''}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12, color: Colors.grey[800]),
+                ),
+              ]),
+            ),
+            const Icon(Icons.chevron_right, color: Colors.grey),
+          ]),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
@@ -213,6 +247,7 @@ class BerandaPage extends StatelessWidget {
           ]),
         ),
         if (s.isOwner) _nilaiCard(context, s),
+        if (s.isOwner || me.role == 'gudang') _menipisCard(context, s),
         if (me.role != 'owner') ...[const SizedBox(height: 12), buttons],
         const SizedBox(height: 16),
         Row(children: [

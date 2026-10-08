@@ -230,6 +230,7 @@ Future<bool?> editItemDialog(BuildContext context, AppState s, Item it) {
   var siap = it.siapJual;
   var jalur = it.jalur;
   final rend = TextEditingController(text: it.rendemenStd == null ? '' : fmtQty(it.rendemenStd!));
+  final minStok = TextEditingController(text: it.stokMin > 0 ? fmtQty(it.stokMin) : '');
   String? err;
   var saving = false;
   return showDialog<bool>(
@@ -247,6 +248,16 @@ Future<bool?> editItemDialog(BuildContext context, AppState s, Item it) {
             TextField(controller: unit, decoration: const InputDecoration(labelText: 'Satuan')),
             _chipRow(_units, unit, setS),
             SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('Aktif (muncul di pilihan)'), value: active, onChanged: (v) => setS(() => active = v)),
+            TextField(
+              controller: minStok,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                labelText: 'Stok minimum gudang (opsional)',
+                suffixText: it.unit,
+                helperText: 'Beranda memberi peringatan bila stok gudang sama dengan atau di bawah angka ini. Kosong = tidak dipantau.',
+                helperMaxLines: 3,
+              ),
+            ),
             if (it.kind == 'jadi')
               Padding(
                 padding: const EdgeInsets.only(top: 6),
@@ -291,6 +302,15 @@ Future<bool?> editItemDialog(BuildContext context, AppState s, Item it) {
                       }
                     }
                     final rendChanged = it.kind == 'jadi' && newRend != it.rendemenStd;
+                    var newMin = 0.0;
+                    if (minStok.text.trim().isNotEmpty) {
+                      final m = parseQty(minStok.text);
+                      if (m == null || m < 0) {
+                        setS(() => err = 'Stok minimum harus berupa angka 0 atau lebih');
+                        return;
+                      }
+                      newMin = m;
+                    }
                     setS(() => saving = true);
                     try {
                       await s.updateItem(it.id,
@@ -301,6 +321,8 @@ Future<bool?> editItemDialog(BuildContext context, AppState s, Item it) {
                           siapJual: (it.kind == 'mentah' && siap != it.siapJual) ? siap : null,
                           rendemenStd: newRend,
                           setRendemen: rendChanged,
+                          stokMin: newMin,
+                          setStokMin: newMin != it.stokMin,
                           jalur: (it.kind == 'mentah' && jalur != it.jalur) ? jalur : null);
                       if (d.mounted) Navigator.pop(d, true);
                     } catch (e) {

@@ -206,6 +206,18 @@ class AppState extends ChangeNotifier {
     return 0;
   }
 
+  /// Barang di gudang yang stoknya sudah di bawah atau sama dengan batas minimum (stok minimum > 0).
+  List<LowStock> get stokMenipis {
+    final out = <LowStock>[];
+    for (final i in items) {
+      if (!i.active || i.stokMin <= 0) continue;
+      final q = stockAt('gudang', i.id);
+      if (q <= i.stokMin) out.add(LowStock(i, q));
+    }
+    out.sort((a, b) => (a.qty / a.item.stokMin).compareTo(b.qty / b.item.stokMin));
+    return out;
+  }
+
   /// Semua lokasi stok: gudang, produksi, lalu cabang.
   List<String> get locations {
     if (role == 'cabang') return [me?.branch ?? ''];
@@ -390,7 +402,9 @@ class AppState extends ChangeNotifier {
       bool? siapJual,
       double? rendemenStd,
       bool setRendemen = false,
-      String? jalur}) async {
+      String? jalur,
+      double? stokMin,
+      bool setStokMin = false}) async {
     await sb.from('items').update({
       'name': name.trim(),
       'category': category.trim(),
@@ -398,6 +412,7 @@ class AppState extends ChangeNotifier {
       'active': active,
       if (siapJual != null) 'siap_jual': siapJual,
       if (setRendemen) 'rendemen_std': rendemenStd,
+      if (setStokMin) 'stok_min': stokMin ?? 0,
       if (jalur != null) ...{'untuk_produksi': jalur != 'cabang', 'ke_cabang': jalur != 'olah'},
     }).eq('id', id);
     await refresh(silent: true);
