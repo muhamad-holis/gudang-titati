@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../bon.dart';
 import '../models.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../utils.dart';
+import 'bon_cabang_page.dart';
 import 'doc_form_page.dart';
 import 'nilai_gudang_page.dart';
 import 'docs_page.dart';
@@ -166,6 +168,36 @@ class BerandaPage extends StatelessWidget {
     );
   }
 
+  Widget _bonCard(BuildContext context, AppState s) {
+    final n = DateTime.now();
+    final awal = DateTime(n.year, n.month, 1);
+    final bulanIni = s.docs.where((d) => bonTerbit(d) && !bonWaktu(d).isBefore(awal)).toList();
+    final total = bulanIni.fold<double>(0, (a, d) => a + bonNilai(d));
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      decoration: cardDeco(),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BonCabangPage())),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(children: [
+            const Icon(Icons.receipt_long_outlined, size: 34, color: navy),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(s.isOwner ? 'Bon cabang bulan ini' : 'Bon cabang Anda bulan ini', style: TextStyle(fontSize: 12, color: Colors.grey[700])),
+                Text(rp(total), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: navy)),
+                Text('${bulanIni.length} pengiriman', style: TextStyle(fontSize: 11, color: Colors.grey[700])),
+              ]),
+            ),
+            const Icon(Icons.chevron_right, color: Colors.grey),
+          ]),
+        ),
+      ),
+    );
+  }
+
   Widget _menipisCard(BuildContext context, AppState s) {
     final list = s.stokMenipis;
     if (list.isEmpty) return const SizedBox.shrink();
@@ -247,6 +279,7 @@ class BerandaPage extends StatelessWidget {
           ]),
         ),
         if (s.isOwner) _nilaiCard(context, s),
+        if (s.isOwner || me.role == 'cabang') _bonCard(context, s),
         if (s.isOwner || me.role == 'gudang') _menipisCard(context, s),
         if (me.role != 'owner') ...[const SizedBox(height: 12), buttons],
         const SizedBox(height: 16),

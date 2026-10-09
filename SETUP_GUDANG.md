@@ -83,3 +83,10 @@ Jalankan `supabase_update_nilai_periode.sql` (setelah `supabase_update_nilai_gud
 - **Paling banyak bergerak** dan **Ada stok tapi tidak bergerak** dihitung dari periode yang dipilih.
 - Ikon PDF di pojok kanan atas: bagikan atau cetak laporan periode yang sedang dipilih (Sekarang = laporan hari ini).
 - **Stok minimum**: Master -> ketuk barang -> isi *Stok minimum gudang*. Bila stok gudang sama dengan atau di bawah angka itu, Beranda owner dan kepala gudang menampilkan kartu **stok menipis**, dan tab Stok (Gudang) menandai barangnya. Kosong = tidak dipantau. Hanya owner yang bisa mengubah batas minimum.
+
+### Bon cabang (surat jalan bernilai)
+Jalankan `supabase_update_bon_cabang.sql` (boleh kapan saja setelah `supabase_update_nilai_periode.sql`, aman diulang; tidak menimpa fungsi lama).
+- Setiap pengiriman ke cabang (Permintaan Cabang dan Kirim ke Cabang) membawa harga: harga rata-rata beli dari grosir, dikunci saat barang dikirim. Pengiriman lama ikut diisi harganya.
+- Nota menjadi *Surat Jalan & Bon Cabang*: tabel surat jalan (dikirim/diterima/kurang) ditambah tabel bon (jumlah, harga, subtotal, total). Dasar bon: jumlah diterima; sebelum diterima memakai jumlah dikirim.
+- Barang yang belum pernah dibeli lewat Barang Masuk (mis. bakso hasil produksi) tidak punya harga: tampil "-" dan tidak dihitung.
+- Beranda owner dan cabang punya kartu *Bon cabang bulan ini*; ketuk untuk rekap per cabang dan per barang (Hari ini, 7 hari, 30 hari, Bulan ini). Tanpa pembayaran dan tanpa ACC tambahan.

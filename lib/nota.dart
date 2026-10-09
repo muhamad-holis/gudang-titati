@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'bon.dart';
 import 'models.dart';
 import 'utils.dart';
 
@@ -101,7 +102,7 @@ NotaData buildNota(Doc d) {
       break;
     case 'minta_cabang':
     case 'kirim_cabang':
-      title = 'Surat Jalan';
+      title = bonTerbit(d) ? 'Surat Jalan & Bon Cabang' : 'Surat Jalan';
       parties = [
         ['Dari', 'Gudang'],
         ['Kepada', d.branch.isEmpty ? '-' : d.branch],
@@ -111,6 +112,28 @@ NotaData buildNota(Doc d) {
         widths: const [1, 6, 3, 3, 3],
         rows: [for (var i = 0; i < d.lines.length; i++) _kirimRow(i + 1, d.lines[i])],
       ));
+      if (bonTerbit(d)) {
+        final bonRows = <NotaRow>[];
+        for (var i = 0; i < d.lines.length; i++) {
+          final l = d.lines[i];
+          final q = bonQty(l);
+          bonRows.add(NotaRow([
+            '${i + 1}',
+            l.name,
+            _qty(l, q),
+            l.price > 0 ? _num(l.price) : '-',
+            l.price > 0 ? _num(l.price * q) : '-',
+          ]));
+        }
+        sections.add(NotaSection(
+          title: d.status == 'diterima' ? 'Bon cabang (jumlah diterima)' : 'Bon cabang (jumlah dikirim)',
+          heads: const ['No', 'Barang', 'Jml', 'Harga', 'Subtotal'],
+          widths: const [1, 6, 3, 4, 5],
+          rows: bonRows,
+        ));
+        totalLabel = 'Total bon cabang';
+        totalValue = rp(bonNilai(d));
+      }
       s1 = const NotaSign('Pengirim (gudang)', '');
       s2 = NotaSign('Penerima (${d.branch.isEmpty ? 'cabang' : d.branch})', d.receivedByName);
       break;

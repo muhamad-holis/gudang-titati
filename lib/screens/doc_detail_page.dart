@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../bon.dart';
 import '../models.dart';
 import '../state.dart';
 import '../theme.dart';
@@ -241,6 +242,7 @@ class _DocDetailPageState extends State<DocDetailPage> {
                     style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: kurang ? red : green));
               }),
             if (d.type == 'masuk' && l.price > 0) Text('${rp(l.price)} / ${l.unit} • total ${rp(l.price * l.qty)}', style: TextStyle(fontSize: 12, color: Colors.grey[700])),
+            if (bonTerbit(d) && l.price > 0) Text('${rp(l.price)} / ${l.unit} • bon ${rp(l.price * bonQty(l))}', style: TextStyle(fontSize: 12, color: Colors.grey[700])),
             if (l.qtyReceived != null && (d.type != 'setor_jadi' || l.role == 'hasil') && d.type != 'masuk')
               Text('Diterima ${fmtQty(l.qtyReceived!)} ${l.unit}${diff ? '  (selisih ${fmtQty(l.qtyReceived! - l.qty)})' : ''}',
                   style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: diff ? red : green)),
@@ -338,6 +340,7 @@ class _DocDetailPageState extends State<DocDetailPage> {
     }
 
     final total = d.type == 'masuk' ? d.lines.fold<double>(0, (a, l) => a + l.price * l.qty) : 0.0;
+    final bonTotal = bonNilai(d);
 
     return Scaffold(
       appBar: AppBar(
@@ -370,6 +373,7 @@ class _DocDetailPageState extends State<DocDetailPage> {
             if (d.sentAt != null) _kv('Dikirim', tglJam(d.sentAt!)),
             if (d.receivedAt != null) _kv('Diterima', '${tglJam(d.receivedAt!)}${d.receivedByName.isEmpty ? '' : ' oleh ${d.receivedByName}'}'),
             if (total > 0) _kv('Total pembelian', rp(total)),
+            if (bonTotal > 0) _kv('Total bon cabang', rp(bonTotal)),
             if (d.hasDiff) _kv('Selisih', 'Ada selisih jumlah diterima', color: red),
           ]),
         ),
@@ -380,7 +384,7 @@ class _DocDetailPageState extends State<DocDetailPage> {
               style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(46), backgroundColor: Colors.white),
               onPressed: () => _bukaNota(d),
               icon: const Icon(Icons.receipt_long, size: 20),
-              label: Text(d.type == 'masuk' ? 'Lihat faktur, bagikan atau cetak' : 'Lihat surat jalan, bagikan atau cetak'),
+              label: Text(d.type == 'masuk' ? 'Lihat faktur, bagikan atau cetak' : (bonTerbit(d) ? 'Lihat surat jalan & bon, bagikan atau cetak' : 'Lihat surat jalan, bagikan atau cetak')),
             ),
           ),
         if (editing)
