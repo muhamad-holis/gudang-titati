@@ -29,6 +29,9 @@ class Item {
 
   /// Batas stok minimum di gudang. 0 = tidak dipantau.
   final double stokMin;
+
+  /// Harga jual standar ke cabang (isian awal saat kirim). 0 = belum diatur.
+  final double sellPriceDefault;
   Item({
     required this.id,
     required this.name,
@@ -41,6 +44,7 @@ class Item {
     this.untukProduksi = true,
     this.keCabang = false,
     this.stokMin = 0,
+    this.sellPriceDefault = 0,
   });
 
   /// Jalur bahan mentah: 'olah' (hanya produksi), 'cabang' (langsung ke cabang), 'dua' (keduanya).
@@ -57,6 +61,7 @@ class Item {
         untukProduksi: (j['untuk_produksi'] as bool?) ?? true,
         keCabang: (j['ke_cabang'] as bool?) ?? false,
         stokMin: j['stok_min'] == null ? 0 : toD(j['stok_min']),
+        sellPriceDefault: j['sell_price_default'] == null ? 0 : toD(j['sell_price_default']),
       );
 }
 

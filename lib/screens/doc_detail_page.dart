@@ -175,7 +175,7 @@ class _DocDetailPageState extends State<DocDetailPage> {
     }).toList();
     final cs = <String, TextEditingController>{};
     for (final l in lines) {
-      final awal = l.sellPrice > 0 ? l.sellPrice : s.hargaJualTerakhir(l.itemId, cabang: d.branch);
+      final awal = l.sellPrice > 0 ? l.sellPrice : s.hargaAwal(l.itemId, cabang: d.branch);
       cs[l.id] = TextEditingController(text: awal > 0 ? awal.round().toString() : '');
     }
     String? err;
@@ -186,7 +186,7 @@ class _DocDetailPageState extends State<DocDetailPage> {
           title: Text(title),
           content: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('Isi harga jual per satuan. Harga ini yang tercatat di bon cabang dan menjadi dasar omzet.', style: TextStyle(fontSize: 12)),
+              const Text('Isi harga jual per satuan. Harga ini yang tercatat di bon cabang dan menjadi dasar omzet. Bahan jadi hasil produksi (mis. bakso) boleh dikosongkan dan diisi menyusul lewat Atur harga jual.', style: TextStyle(fontSize: 12)),
               const SizedBox(height: 10),
               for (final l in lines)
                 Padding(
@@ -195,8 +195,12 @@ class _DocDetailPageState extends State<DocDetailPage> {
                     Text(l.name, style: const TextStyle(fontWeight: FontWeight.w700)),
                     Builder(builder: (_) {
                       final modal = s.modalRata(l.itemId);
-                      return Text(modal > 0 ? 'Modal rata-rata ${rp(modal)} / ${l.unit}' : 'Modal belum diketahui',
-                          style: TextStyle(fontSize: 12, color: modal > 0 ? Colors.grey[700] : orange));
+                      final std = s.itemById(l.itemId)?.sellPriceDefault ?? 0;
+                      final info = modal > 0
+                          ? 'Modal rata-rata ${rp(modal)} / ${l.unit}'
+                          : (s.hargaBolehKosong(l.itemId) ? 'Hasil produksi, modal belum dihitung' : 'Modal belum diketahui');
+                      return Text('$info${std > 0 ? ' • harga standar ${rp(std)}' : ''}',
+                          style: TextStyle(fontSize: 12, color: modal > 0 || s.hargaBolehKosong(l.itemId) ? Colors.grey[700] : orange));
                     }),
                     const SizedBox(height: 4),
                     TextField(
@@ -217,7 +221,7 @@ class _DocDetailPageState extends State<DocDetailPage> {
                 for (final l in lines) {
                   final p = parseQty(cs[l.id]!.text) ?? 0;
                   // barang yang stok gudangnya kosong tidak wajib berharga (akan terkirim 0)
-                  final wajib = d.status != 'disetujui' || s.stockAt('gudang', l.itemId) > 0;
+                  final wajib = (d.status != 'disetujui' || s.stockAt('gudang', l.itemId) > 0) && !s.hargaBolehKosong(l.itemId);
                   if (wajib && p <= 0) {
                     setS(() => err = 'Isi harga jual untuk ${l.name}');
                     return;

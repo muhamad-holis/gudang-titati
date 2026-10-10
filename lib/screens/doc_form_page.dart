@@ -56,9 +56,8 @@ class _DocFormPageState extends State<DocFormPage> {
     }
     final fl = _FLine(it, role);
     if (widget.type == 'kirim_cabang') {
-      final last = context.read<AppState>().hargaJualTerakhir(it.id, cabang: branch);
-      final any = last > 0 ? last : context.read<AppState>().hargaJualTerakhir(it.id);
-      if (any > 0) fl.sell.text = any.round().toString();
+      final awal = context.read<AppState>().hargaAwal(it.id, cabang: branch);
+      if (awal > 0) fl.sell.text = awal.round().toString();
     }
     setState(() => lines.add(fl));
   }
@@ -78,7 +77,7 @@ class _DocFormPageState extends State<DocFormPage> {
         return null;
       }
       final sp = parseQty(l.sell.text) ?? 0;
-      if (widget.type == 'kirim_cabang' && sp <= 0) {
+      if (widget.type == 'kirim_cabang' && sp <= 0 && l.item.kind != 'jadi') {
         setState(() => error = 'Isi harga jual untuk ${l.item.name}');
         return null;
       }
@@ -216,7 +215,11 @@ class _DocFormPageState extends State<DocFormPage> {
                 controller: l.sell,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 onChanged: (_) => setState(() {}),
-                decoration: InputDecoration(labelText: 'Harga jual / ${l.item.unit}', prefixText: 'Rp ', isDense: true, border: const OutlineInputBorder()),
+                decoration: InputDecoration(
+                    labelText: l.item.kind == 'jadi' ? 'Harga jual / ${l.item.unit} (boleh kosong)' : 'Harga jual / ${l.item.unit}',
+                    prefixText: 'Rp ',
+                    isDense: true,
+                    border: const OutlineInputBorder()),
               ),
             ),
           ]),

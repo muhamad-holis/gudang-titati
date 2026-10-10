@@ -277,6 +277,7 @@ Future<bool?> editItemDialog(BuildContext context, AppState s, Item it) {
   var jalur = it.jalur;
   final rend = TextEditingController(text: it.rendemenStd == null ? '' : fmtQty(it.rendemenStd!));
   final minStok = TextEditingController(text: it.stokMin > 0 ? fmtQty(it.stokMin) : '');
+  final hargaStd = TextEditingController(text: it.sellPriceDefault > 0 ? it.sellPriceDefault.round().toString() : '');
   String? err;
   var saving = false;
   return showDialog<bool>(
@@ -302,6 +303,20 @@ Future<bool?> editItemDialog(BuildContext context, AppState s, Item it) {
                 suffixText: it.unit,
                 helperText: 'Beranda memberi peringatan bila stok gudang sama dengan atau di bawah angka ini. Kosong = tidak dipantau.',
                 helperMaxLines: 3,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: TextField(
+                controller: hargaStd,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  labelText: 'Harga jual standar ke cabang (opsional)',
+                  prefixText: 'Rp ',
+                  suffixText: '/ ${it.unit}',
+                  helperText: 'Jadi isian awal saat kirim ke cabang, masih bisa diubah tiap kiriman. Kosong = isi manual.',
+                  helperMaxLines: 3,
+                ),
               ),
             ),
             if (it.kind == 'jadi')
@@ -424,6 +439,15 @@ Future<bool?> editItemDialog(BuildContext context, AppState s, Item it) {
                       }
                       newMin = m;
                     }
+                    var newHarga = 0.0;
+                    if (hargaStd.text.trim().isNotEmpty) {
+                      final h = parseQty(hargaStd.text);
+                      if (h == null || h < 0) {
+                        setS(() => err = 'Harga jual standar harus berupa angka 0 atau lebih');
+                        return;
+                      }
+                      newHarga = h;
+                    }
                     setS(() => saving = true);
                     try {
                       await s.updateItem(it.id,
@@ -436,6 +460,7 @@ Future<bool?> editItemDialog(BuildContext context, AppState s, Item it) {
                           setRendemen: rendChanged,
                           stokMin: newMin,
                           setStokMin: newMin != it.stokMin,
+                          sellPriceDefault: newHarga != it.sellPriceDefault ? newHarga : null,
                           jalur: (it.kind == 'mentah' && jalur != it.jalur) ? jalur : null);
                       if (d.mounted) Navigator.pop(d, true);
                     } catch (e) {

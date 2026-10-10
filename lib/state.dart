@@ -441,6 +441,20 @@ class AppState extends ChangeNotifier {
     return qty > 0 ? nilai / qty : 0;
   }
 
+  /// Isian awal harga jual: harga jual standar barang bila sudah diatur, selain itu harga jual terakhir. 0 bila belum ada.
+  double hargaAwal(String itemId, {String? cabang}) {
+    final std = itemById(itemId)?.sellPriceDefault ?? 0;
+    if (std > 0) return std;
+    final last = hargaJualTerakhir(itemId, cabang: cabang);
+    return last > 0 ? last : hargaJualTerakhir(itemId);
+  }
+
+  /// Barang bahan jadi (hasil produksi) boleh dikirim tanpa harga jual dulu; harga diisi menyusul.
+  bool hargaBolehKosong(String itemId) => itemById(itemId)?.kind == 'jadi';
+
+  /// Pengiriman ke cabang yang sudah terkirim tetapi masih ada barang tanpa harga jual.
+  List<Doc> get kirimanBelumBerharga => [for (final d in docs) if (bonTanpaHarga(d) > 0) d];
+
   /// Harga jual terakhir sebuah barang ke cabang tertentu (untuk isian awal), 0 bila belum pernah.
   double hargaJualTerakhir(String itemId, {String? cabang}) {
     DateTime? best;
@@ -540,7 +554,8 @@ class AppState extends ChangeNotifier {
       bool setRendemen = false,
       String? jalur,
       double? stokMin,
-      bool setStokMin = false}) async {
+      bool setStokMin = false,
+      double? sellPriceDefault}) async {
     await sb.from('items').update({
       'name': name.trim(),
       'category': category.trim(),
@@ -549,6 +564,7 @@ class AppState extends ChangeNotifier {
       if (siapJual != null) 'siap_jual': siapJual,
       if (setRendemen) 'rendemen_std': rendemenStd,
       if (setStokMin) 'stok_min': stokMin ?? 0,
+      if (sellPriceDefault != null) 'sell_price_default': sellPriceDefault,
       if (jalur != null) ...{'untuk_produksi': jalur != 'cabang', 'ke_cabang': jalur != 'olah'},
     }).eq('id', id);
     await refresh(silent: true);

@@ -227,6 +227,12 @@ class BerandaPage extends StatelessWidget {
                 Text(rp(omzet), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: navy)),
                 Text('Keuntungan ${rp(laba)} • ${bulanIni.length} pengiriman',
                     style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: laba < 0 ? red : green)),
+                if (s.kirimanBelumBerharga.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text('${s.kirimanBelumBerharga.length} pengiriman belum berharga jual, belum masuk omzet. Ketuk untuk melihat.',
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: orange)),
+                  ),
               ]),
             ),
             const Icon(Icons.chevron_right, color: Colors.grey),

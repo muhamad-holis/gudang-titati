@@ -86,6 +86,12 @@ Jalankan `supabase_update_omzet_tagihan.sql` PALING AKHIR (setelah semua file la
 - Barang baru yang ditambah gudang otomatis berjalur "diolah / langsung ke cabang", jadi bisa langsung dikirim ke cabang.
 - Opsional: `supabase_bersihkan_master_bawaan.sql` menghapus 51 barang bawaan dari master data yang belum pernah dipakai transaksi. Jalankan bagian preview dulu, cek daftarnya, baru aktifkan bagian hapus.
 
+### Harga jual standar dan bakso hasil produksi tanpa harga
+Jalankan `supabase_update_harga_standar.sql` SETELAH `supabase_update_omzet_tagihan.sql`. Aman diulang. Jangan menjalankan ulang file omzet_tagihan sesudahnya (fungsi `create_kirim_cabang` akan kembali ke versi lama).
+- **Harga jual standar**: di tab Barang/Master, ketuk barang, isi *Harga jual standar ke cabang*. Nilai ini otomatis terisi di kolom harga saat **Kirim ke Cabang** dan saat menekan **Kirim** pada Permintaan Cabang. Masih bisa diubah tiap kiriman. Bila belum diatur, isian awal memakai harga jual terakhir barang itu.
+- **Bahan jadi (bakso hasil produksi) boleh tanpa harga**: kolom harga boleh dikosongkan, pengiriman tetap jalan. Isi menyusul lewat tombol **Atur harga jual** di detail dokumen (hanya selama belum ada pembayaran bon). Barang selain bahan jadi tetap wajib berharga jual.
+- Kiriman yang belum berharga belum ikut omzet dan bon. Kartu **Omzet gudang** di Beranda menampilkan pengingat berwarna oranye selama masih ada.
+
 ## Aturan penting
 - Stok pengirim berkurang saat dikirim; stok penerima bertambah hanya setelah penerima menekan Terima.
 - Jumlah diterima bisa lebih kecil dari yang dikirim; selisih tercatat dan ditandai merah untuk owner.
