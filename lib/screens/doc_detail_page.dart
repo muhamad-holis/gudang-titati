@@ -145,7 +145,9 @@ class _DocDetailPageState extends State<DocDetailPage> {
 
   Future<void> _kirim(AppState s, Doc d) async {
     final extra = d.type == 'setor_jadi' ? ' Bahan yang dipakai akan dikurangi dari stok produksi.' : ' Stok pengirim akan dikurangi.';
-    if (!await _confirm('Kirim sekarang?', 'Barang dianggap sudah dikirim.$extra', 'Kirim')) return;
+    final nKosong = d.type == 'minta_cabang' ? d.lines.where((l) => s.stockAt('gudang', l.itemId) < l.qty).length : 0;
+    final infoKosong = nKosong > 0 ? '\n\n$nKosong barang stoknya kosong/kurang. Barang itu tetap dikirim sebesar stok yang ada dan ditandai KOSONG.' : '';
+    if (!await _confirm('Kirim sekarang?', 'Barang dianggap sudah dikirim.$extra$infoKosong', 'Kirim')) return;
     final payload = (editing && d.type == 'minta_cabang') ? _editPayload(d) : <Map<String, dynamic>>[];
     await _run(() => s.sendDoc(d.id, lines: payload.isEmpty ? null : payload), 'Ditandai terkirim');
   }
@@ -238,9 +240,12 @@ class _DocDetailPageState extends State<DocDetailPage> {
               Builder(builder: (_) {
                 final have = context.read<AppState>().stockAt('gudang', l.itemId);
                 final kurang = have < l.qty;
-                return Text('Stok gudang: ${fmtQty(have)} ${l.unit}${kurang ? ' (kurang)' : ''}',
+                return Text('Stok gudang: ${fmtQty(have)} ${l.unit}${kurang ? (have <= 0 ? ' (KOSONG, tetap dikirim & ditandai)' : ' (kurang, dikirim sebesar stok)') : ''}',
                     style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: kurang ? red : green));
               }),
+            if (l.kosong)
+              Text(l.qty <= 0 ? 'KOSONG di gudang • diminta ${fmtQty(l.qtyMinta ?? 0)} ${l.unit}' : 'STOK KURANG • diminta ${fmtQty(l.qtyMinta ?? 0)} ${l.unit}, dikirim ${fmtQty(l.qty)}',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: red)),
             if (d.type == 'masuk' && l.price > 0) Text('${rp(l.price)} / ${l.unit} • total ${rp(l.price * l.qty)}', style: TextStyle(fontSize: 12, color: Colors.grey[700])),
             if (bonTerbit(d) && l.price > 0) Text('${rp(l.price)} / ${l.unit} • bon ${rp(l.price * bonQty(l))}', style: TextStyle(fontSize: 12, color: Colors.grey[700])),
             if (l.qtyReceived != null && (d.type != 'setor_jadi' || l.role == 'hasil') && d.type != 'masuk')

@@ -95,3 +95,8 @@ Jalankan `supabase_update_bon_cabang.sql` (boleh kapan saja setelah `supabase_up
 Jalankan `supabase_update_hapus_barang.sql` (aman diulang, tidak menimpa fungsi lama). Di tab Master, ketuk barang lalu pilih *Hapus* atau *Gabungkan*.
 - Hapus: barang yang belum pernah dipakai transaksi dihapus permanen. Barang yang sudah punya riwayat hanya dinonaktifkan (laporan lama tetap benar). Ditolak bila stok masih ada; kosongkan dulu lewat koreksi stok.
 - Gabungkan: untuk barang dobel. Stok dan riwayat dipindah ke barang tujuan lalu barang asal dihapus. Jenis dan satuan harus sama.
+
+### Permintaan cabang tetap terkirim walau stok kosong
+Jalankan `supabase_update_stok_kosong.sql` SESUDAH `supabase_update_kirim_cabang.sql` (mengganti `send_doc`; jangan jalankan ulang file kirim_cabang sesudahnya). Aman diulang.
+- Permintaan Cabang yang stok gudangnya kurang/kosong tetap bisa dikirim. Barang kosong dikirim 0 dan ditandai KOSONG; barang kurang dikirim sebesar stok dan ditandai STOK KURANG. Jumlah yang diminta tetap tersimpan dan tampil di detail dokumen dan nota.
+- Stok gudang hanya berkurang sebesar yang benar-benar dikirim. Jenis dokumen lain tetap menolak bila stok kurang.

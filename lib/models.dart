@@ -79,6 +79,10 @@ class DocLine {
   final String id, itemId, role, name, unit, kind;
   final double qty, price;
   final double? qtyReceived;
+
+  /// Jumlah yang diminta cabang bila stok gudang kosong/kurang saat dikirim (null = tidak ada masalah).
+  final double? qtyMinta;
+  final bool kosong;
   DocLine({
     required this.id,
     required this.itemId,
@@ -89,6 +93,8 @@ class DocLine {
     required this.qty,
     required this.price,
     this.qtyReceived,
+    this.qtyMinta,
+    this.kosong = false,
   });
   factory DocLine.fromJson(Map<String, dynamic> j) {
     final it = j['items'] is Map ? Map<String, dynamic>.from(j['items'] as Map) : <String, dynamic>{};
@@ -102,6 +108,8 @@ class DocLine {
       qty: toD(j['qty']),
       price: toD(j['unit_price']),
       qtyReceived: j['qty_received'] == null ? null : toD(j['qty_received']),
+      qtyMinta: j['qty_minta'] == null ? null : toD(j['qty_minta']),
+      kosong: (j['kosong'] as bool?) ?? false,
     );
   }
 }

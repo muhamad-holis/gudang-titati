@@ -61,16 +61,20 @@ const notaTones = <String, List<int>>{
 String _num(double v) => rp(v).replaceFirst('Rp ', '');
 String _qty(DocLine l, double q) => '${fmtQty(q)} ${l.unit}';
 
+String _namaTanda(DocLine l) => l.kosong
+    ? '${l.name} [${l.qty <= 0 ? 'KOSONG' : 'STOK KURANG'}, diminta ${fmtQty(l.qtyMinta ?? 0)} ${l.unit}]'
+    : l.name;
+
 NotaRow _kirimRow(int i, DocLine l) {
   final r = l.qtyReceived;
   final kurang = r != null && l.qty - r > 0.0001;
   return NotaRow([
     '$i',
-    l.name,
+    _namaTanda(l),
     _qty(l, l.qty),
     r == null ? '-' : _qty(l, r),
     kurang ? _qty(l, l.qty - r!) : '-',
-  ], warn: kurang);
+  ], warn: kurang || l.kosong);
 }
 
 NotaData buildNota(Doc d) {
@@ -119,11 +123,11 @@ NotaData buildNota(Doc d) {
           final q = bonQty(l);
           bonRows.add(NotaRow([
             '${i + 1}',
-            l.name,
+            _namaTanda(l),
             _qty(l, q),
             l.price > 0 ? _num(l.price) : '-',
-            l.price > 0 ? _num(l.price * q) : '-',
-          ]));
+            (l.price > 0 && q > 0) ? _num(l.price * q) : '-',
+          ], warn: l.kosong));
         }
         sections.add(NotaSection(
           title: d.status == 'diterima' ? 'Bon cabang (jumlah diterima)' : 'Bon cabang (jumlah dikirim)',
