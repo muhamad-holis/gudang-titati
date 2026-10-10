@@ -221,6 +221,51 @@ Future<Item?> addItemDialog(BuildContext context, AppState s, {String? kind}) {
   );
 }
 
+Future<bool> _konfirmasi(BuildContext ctx, String judul, String isi, String tombol) async {
+  final r = await showDialog<bool>(
+    context: ctx,
+    builder: (c) => AlertDialog(
+      title: Text(judul),
+      content: Text(isi),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Batal')),
+        FilledButton(style: FilledButton.styleFrom(backgroundColor: red), onPressed: () => Navigator.pop(c, true), child: Text(tombol)),
+      ],
+    ),
+  );
+  return r == true;
+}
+
+Future<Item?> _pilihTujuan(BuildContext ctx, AppState s, Item it) {
+  final opsi = s.items.where((x) => x.kind == it.kind && x.id != it.id).toList();
+  Item? pilih;
+  return showDialog<Item>(
+    context: ctx,
+    builder: (c) => StatefulBuilder(
+      builder: (c, setS) => AlertDialog(
+        title: Text('Gabungkan "${it.name}" ke...'),
+        content: opsi.isEmpty
+            ? const Text('Tidak ada barang lain dengan jenis yang sama.')
+            : Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('Stok dan seluruh riwayat dipindah ke barang tujuan, lalu barang ini dihapus. Satuan keduanya harus sama.', style: TextStyle(fontSize: 12)),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<Item>(
+                  isExpanded: true,
+                  value: pilih,
+                  hint: const Text('Pilih barang tujuan'),
+                  items: [for (final x in opsi) DropdownMenuItem(value: x, child: Text('${x.name} (${x.unit})', overflow: TextOverflow.ellipsis))],
+                  onChanged: (v) => setS(() => pilih = v),
+                ),
+              ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c), child: const Text('Batal')),
+          FilledButton(onPressed: pilih == null ? null : () => Navigator.pop(c, pilih), child: const Text('Lanjut')),
+        ],
+      ),
+    ),
+  );
+}
+
 /// Ubah bahan (owner). Mengembalikan true jika tersimpan.
 Future<bool?> editItemDialog(BuildContext context, AppState s, Item it) {
   final name = TextEditingController(text: it.name);
@@ -281,6 +326,72 @@ Future<bool?> editItemDialog(BuildContext context, AppState s, Item it) {
               ),
             if (it.kind == 'mentah' && !siap) _jalurPicker(jalur, (v) => setS(() => jalur = v)),
             if (err != null) Text(err!, style: const TextStyle(color: red)),
+            if (s.isOwner) ...[
+              const Divider(height: 24),
+              Wrap(spacing: 8, children: [
+                TextButton.icon(
+                  onPressed: saving
+                      ? null
+                      : () async {
+                          final ok = await _konfirmasi(d, 'Hapus "${it.name}"?',
+                              'Barang yang belum pernah dipakai transaksi dihapus permanen. Barang yang sudah punya riwayat tidak dihapus, hanya disembunyikan (nonaktif) supaya laporan lama tetap benar. Stoknya harus kosong dulu.', 'Hapus');
+                          if (!ok) return;
+                          setS(() {
+                            saving = true;
+                            err = null;
+                          });
+                          try {
+                            final hasil = await s.hapusBarang(it.id);
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                  content: Text(hasil == 'hapus' ? '"${it.name}" dihapus permanen' : '"${it.name}" punya riwayat transaksi, jadi disembunyikan (nonaktif)')));
+                            }
+                            if (d.mounted) Navigator.pop(d, true);
+                          } catch (e) {
+                            if (d.mounted) {
+                              setS(() {
+                                saving = false;
+                                err = errText(e);
+                              });
+                            }
+                          }
+                        },
+                  icon: const Icon(Icons.delete_outline, color: red, size: 18),
+                  label: const Text('Hapus', style: TextStyle(color: red)),
+                ),
+                TextButton.icon(
+                  onPressed: saving
+                      ? null
+                      : () async {
+                          final tujuan = await _pilihTujuan(d, s, it);
+                          if (tujuan == null || !d.mounted) return;
+                          final ok = await _konfirmasi(d, 'Gabungkan barang?',
+                              'Stok dan riwayat "${it.name}" dipindah ke "${tujuan.name}", lalu "${it.name}" dihapus. Tidak bisa dibatalkan.', 'Gabungkan');
+                          if (!ok) return;
+                          setS(() {
+                            saving = true;
+                            err = null;
+                          });
+                          try {
+                            await s.gabungBarang(it.id, tujuan.id);
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('"${it.name}" digabung ke "${tujuan.name}"')));
+                            }
+                            if (d.mounted) Navigator.pop(d, true);
+                          } catch (e) {
+                            if (d.mounted) {
+                              setS(() {
+                                saving = false;
+                                err = errText(e);
+                              });
+                            }
+                          }
+                        },
+                  icon: const Icon(Icons.merge_type, size: 18),
+                  label: const Text('Gabungkan'),
+                ),
+              ]),
+            ],
           ]),
         ),
         actions: [

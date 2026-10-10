@@ -418,6 +418,19 @@ class AppState extends ChangeNotifier {
     await refresh(silent: true);
   }
 
+  /// Hapus barang (owner). 'hapus' = dihapus permanen; 'arsip' = punya riwayat, hanya dinonaktifkan.
+  Future<String> hapusBarang(String id) async {
+    final r = await sb.rpc('hapus_barang', params: {'p_item': id});
+    await refresh(silent: true);
+    return r.toString();
+  }
+
+  /// Gabungkan barang dobel: riwayat dan stok [dari] dipindah ke [ke], lalu [dari] dihapus (owner).
+  Future<void> gabungBarang(String dari, String ke) async {
+    await sb.rpc('gabung_barang', params: {'p_dari': dari, 'p_ke': ke});
+    await refresh(silent: true);
+  }
+
   Future<void> addCategory(String name) async {
     await sb.from('categories').insert({'name': name.trim()});
     await refresh(silent: true);

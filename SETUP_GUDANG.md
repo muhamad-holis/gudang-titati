@@ -90,3 +90,8 @@ Jalankan `supabase_update_bon_cabang.sql` (boleh kapan saja setelah `supabase_up
 - Nota menjadi *Surat Jalan & Bon Cabang*: tabel surat jalan (dikirim/diterima/kurang) ditambah tabel bon (jumlah, harga, subtotal, total). Dasar bon: jumlah diterima; sebelum diterima memakai jumlah dikirim.
 - Barang yang belum pernah dibeli lewat Barang Masuk (mis. bakso hasil produksi) tidak punya harga: tampil "-" dan tidak dihitung.
 - Beranda owner dan cabang punya kartu *Bon cabang bulan ini*; ketuk untuk rekap per cabang dan per barang (Hari ini, 7 hari, 30 hari, Bulan ini). Tanpa pembayaran dan tanpa ACC tambahan.
+
+### Hapus & gabung barang (owner)
+Jalankan `supabase_update_hapus_barang.sql` (aman diulang, tidak menimpa fungsi lama). Di tab Master, ketuk barang lalu pilih *Hapus* atau *Gabungkan*.
+- Hapus: barang yang belum pernah dipakai transaksi dihapus permanen. Barang yang sudah punya riwayat hanya dinonaktifkan (laporan lama tetap benar). Ditolak bila stok masih ada; kosongkan dulu lewat koreksi stok.
+- Gabungkan: untuk barang dobel. Stok dan riwayat dipindah ke barang tujuan lalu barang asal dihapus. Jenis dan satuan harus sama.
