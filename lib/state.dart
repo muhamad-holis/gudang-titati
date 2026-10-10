@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show Supabase, SupabaseClient, PostgrestException;
+import 'bon.dart';
 import 'models.dart';
+import 'tagihan.dart';
 import 'utils.dart';
 
 SupabaseClient get sb => Supabase.instance.client;
@@ -25,6 +27,8 @@ class AppState extends ChangeNotifier {
   List<StockRow> stock = [];
   List<String> profileBranches = [];
   List<SaleEntry> sales = [];
+  List<Payment> payments = [];
+  String? payError;
   List<RekapRow> rekap = [];
   String? salesError;
   List<NilaiRow> nilaiGudang = [];
@@ -63,6 +67,8 @@ class AppState extends ChangeNotifier {
     stock = [];
     profileBranches = [];
     sales = [];
+    payments = [];
+    payError = null;
     rekap = [];
     salesError = null;
     nilaiGudang = [];
@@ -104,6 +110,7 @@ class AppState extends ChangeNotifier {
         stock = [for (final e in st) StockRow.fromJson(Map<String, dynamic>.from(e))];
         await _loadSales();
         await _loadRules();
+        await _loadPayments();
         if (me!.role == 'owner') {
           await _loadNilai();
           final pr = await sb.from('profiles').select('branch, role');
@@ -161,6 +168,55 @@ class AppState extends ChangeNotifier {
       salesError = errText(e);
     }
   }
+
+  /// Pembayaran (bon cabang & tagihan grosir) dimuat terpisah supaya aplikasi tetap jalan walau SQL omzet_tagihan belum dijalankan.
+  Future<void> _loadPayments() async {
+    try {
+      final r = await sb.from('doc_payments').select().order('paid_at', ascending: false).order('id', ascending: false).limit(2000);
+      payments = [for (final e in r) Payment.fromJson(Map<String, dynamic>.from(e))];
+      payError = null;
+    } catch (e) {
+      payError = errText(e);
+    }
+  }
+
+  /// Rincian pembayaran satu dokumen (terbaru di atas).
+  List<Payment> paymentsOf(String docId) => payments.where((p) => p.docId == docId).toList();
+
+  double paidOf(String docId) => payments.where((p) => p.docId == docId).fold(0.0, (a, p) => a + p.amount);
+
+  /// Sisa bon cabang yang belum dibayar.
+  double bonSisa(Doc d) {
+    final v = bonNilai(d) - paidOf(d.id);
+    return v < 0 ? 0 : v;
+  }
+
+  /// Sisa tagihan grosir yang belum dibayar.
+  double masukSisa(Doc d) {
+    final v = masukTotal(d) - paidOf(d.id);
+    return v < 0 ? 0 : v;
+  }
+
+  /// Semua nota grosir tempo, yang belum lunas dulu (jatuh tempo terdekat di atas).
+  List<Doc> get tagihanSupplier {
+    final list = docs.where(masukTempo).toList();
+    list.sort((a, b) {
+      final la = masukSisa(a) <= 0.5, lb = masukSisa(b) <= 0.5;
+      if (la != lb) return la ? 1 : -1;
+      final ja = a.jatuhTempo ?? DateTime(2100), jb = b.jatuhTempo ?? DateTime(2100);
+      final c = ja.compareTo(jb);
+      return c != 0 ? c : b.createdAt.compareTo(a.createdAt);
+    });
+    return list;
+  }
+
+  List<Doc> get tagihanBelumLunas => tagihanSupplier.where((d) => masukSisa(d) > 0.5).toList();
+
+  /// Tagihan yang jatuh temponya sudah lewat atau tinggal beberapa hari.
+  List<Doc> get tagihanMendekati => tagihanBelumLunas.where((d) {
+        final st = tagihanStatus(d, masukSisa(d));
+        return st == 'lewat' || st == 'dekat';
+      }).toList();
 
   /// Aturan ACC dimuat terpisah supaya aplikasi tetap jalan walau SQL ACC selektif belum dijalankan.
   Future<void> _loadRules() async {
@@ -322,6 +378,86 @@ class AppState extends ChangeNotifier {
     final id = await sb.rpc('create_doc', params: {'p_type': type, 'p_supplier': supplier, 'p_note': note, 'p_lines': lines});
     await refresh(silent: true);
     return id is String ? docById(id) : null;
+  }
+
+  /// Barang Masuk dengan cara bayar: mode 'cash' (lunas) atau 'tempo' (isi jatuhTempo).
+  Future<Doc?> createMasuk(String supplier, String note, List<Map<String, dynamic>> lines, String mode, DateTime? jatuhTempo) async {
+    final id = await sb.rpc('create_masuk', params: {
+      'p_supplier': supplier,
+      'p_note': note,
+      'p_lines': lines,
+      'p_mode': mode,
+      'p_jatuh_tempo': jatuhTempo == null ? null : ymd(jatuhTempo),
+    });
+    await refresh(silent: true);
+    return id is String ? docById(id) : null;
+  }
+
+  /// Kirim ke Cabang dengan harga jual per barang (payload memuat sell_price).
+  Future<Doc?> createKirimCabang(String cabang, String note, List<Map<String, dynamic>> lines) async {
+    final id = await sb.rpc('create_kirim_cabang', params: {'p_cabang': cabang, 'p_note': note, 'p_lines': lines});
+    await refresh(silent: true);
+    return id is String ? docById(id) : null;
+  }
+
+  Future<void> aturPembayaranMasuk(String docId, String mode, DateTime? jatuhTempo) async {
+    await sb.rpc('atur_pembayaran_masuk', params: {'p_doc': docId, 'p_mode': mode, 'p_jatuh_tempo': jatuhTempo == null ? null : ymd(jatuhTempo)});
+    await refresh(silent: true);
+  }
+
+  /// lines: [{line_id, sell_price}]
+  Future<void> aturHargaJual(String docId, List<Map<String, dynamic>> lines) async {
+    await sb.rpc('atur_harga_jual', params: {'p_doc': docId, 'p_lines': lines});
+    await refresh(silent: true);
+  }
+
+  Future<void> bayarBon(String docId, double amount, String method, DateTime paidAt, String note) async {
+    await sb.rpc('catat_bayar_bon', params: {'p_doc': docId, 'p_amount': amount, 'p_method': method, 'p_paid_at': ymd(paidAt), 'p_note': note});
+    await refresh(silent: true);
+  }
+
+  Future<void> bayarSupplier(String docId, double amount, String method, DateTime paidAt, String note) async {
+    await sb.rpc('catat_bayar_supplier', params: {'p_doc': docId, 'p_amount': amount, 'p_method': method, 'p_paid_at': ymd(paidAt), 'p_note': note});
+    await refresh(silent: true);
+  }
+
+  Future<void> batalBayar(int paymentId) async {
+    await sb.rpc('batal_bayar', params: {'p_id': paymentId});
+    await refresh(silent: true);
+  }
+
+  /// Harga beli rata-rata sebuah barang dari Barang Masuk yang tercatat (acuan modal saat menentukan harga jual).
+  double modalRata(String itemId) {
+    var qty = 0.0, nilai = 0.0;
+    for (final d in docs) {
+      if (d.type != 'masuk' || d.status != 'diterima') continue;
+      for (final l in d.lines) {
+        if (l.itemId == itemId && l.price > 0) {
+          qty += l.qty;
+          nilai += l.qty * l.price;
+        }
+      }
+    }
+    return qty > 0 ? nilai / qty : 0;
+  }
+
+  /// Harga jual terakhir sebuah barang ke cabang tertentu (untuk isian awal), 0 bila belum pernah.
+  double hargaJualTerakhir(String itemId, {String? cabang}) {
+    DateTime? best;
+    var harga = 0.0;
+    for (final d in docs) {
+      if (!isBonDoc(d) || (cabang != null && d.branch != cabang)) continue;
+      for (final l in d.lines) {
+        if (l.itemId == itemId && l.sellPrice > 0) {
+          final t = bonWaktu(d);
+          if (best == null || t.isAfter(best)) {
+            best = t;
+            harga = l.sellPrice;
+          }
+        }
+      }
+    }
+    return harga;
   }
 
   Future<void> setRules(double toleransi, double faktor, int hari, int minData) async {

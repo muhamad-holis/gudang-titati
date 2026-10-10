@@ -22,6 +22,7 @@ String rp(num n) {
 String two(int n) => n.toString().padLeft(2, '0');
 const _bulan = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 String tgl(DateTime d) => '${two(d.day)} ${_bulan[d.month - 1]} ${d.year}';
+String ymd(DateTime d) => '${d.year}-${two(d.month)}-${two(d.day)}';
 String jam(DateTime d) => '${two(d.hour)}:${two(d.minute)}';
 String tglJam(DateTime d) => '${tgl(d)} ${jam(d)}';
 

@@ -61,7 +61,7 @@ class _HomeShellState extends State<HomeShell> {
       [Icons.description_outlined, 'Dokumen'],
       if (s.role == 'cabang') [Icons.point_of_sale, 'Jual'],
       [Icons.inventory_2_outlined, 'Stok'],
-      if (s.isOwner) [Icons.tune, 'Master'],
+      if (s.isOwner || s.role == 'gudang') [Icons.tune, s.isOwner ? 'Master' : 'Barang'],
       [Icons.person_outline, 'Akun'],
     ];
     final pages = <Widget>[
@@ -69,7 +69,7 @@ class _HomeShellState extends State<HomeShell> {
       const DocsPage(),
       if (s.role == 'cabang') const SalesPage(),
       const StockPage(),
-      if (s.isOwner) const MasterPage(),
+      if (s.isOwner || s.role == 'gudang') const MasterPage(),
       const AccountPage(),
     ];
     if (idx >= tabs.length) idx = 0;

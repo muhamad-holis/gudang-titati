@@ -150,7 +150,8 @@ Future<Item?> addItemDialog(BuildContext context, AppState s, {String? kind}) {
   final unit = TextEditingController(text: 'kg');
   var k = kind ?? 'mentah';
   var siap = false;
-  var jalur = 'olah';
+  // barang yang ditambah gudang langsung bisa dikirim ke produksi maupun ke cabang
+  var jalur = s.role == 'gudang' ? 'dua' : 'olah';
   final cat = TextEditingController(text: k == 'jadi' ? 'Bahan jadi' : '');
   String? err;
   var saving = false;
@@ -326,7 +327,7 @@ Future<bool?> editItemDialog(BuildContext context, AppState s, Item it) {
               ),
             if (it.kind == 'mentah' && !siap) _jalurPicker(jalur, (v) => setS(() => jalur = v)),
             if (err != null) Text(err!, style: const TextStyle(color: red)),
-            if (s.isOwner) ...[
+            if (s.isOwner || s.role == 'gudang') ...[
               const Divider(height: 24),
               Wrap(spacing: 8, children: [
                 TextButton.icon(
@@ -359,7 +360,8 @@ Future<bool?> editItemDialog(BuildContext context, AppState s, Item it) {
                   icon: const Icon(Icons.delete_outline, color: red, size: 18),
                   label: const Text('Hapus', style: TextStyle(color: red)),
                 ),
-                TextButton.icon(
+                if (s.isOwner)
+                  TextButton.icon(
                   onPressed: saving
                       ? null
                       : () async {

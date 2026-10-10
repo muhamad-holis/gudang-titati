@@ -3,12 +3,15 @@ import 'package:provider/provider.dart';
 import '../bon.dart';
 import '../models.dart';
 import '../state.dart';
+import '../tagihan.dart';
 import '../theme.dart';
 import '../utils.dart';
 import 'bon_cabang_page.dart';
 import 'doc_form_page.dart';
 import 'nilai_gudang_page.dart';
 import 'docs_page.dart';
+import 'omzet_page.dart';
+import 'tagihan_page.dart';
 import 'sales_form_page.dart';
 import 'sales_page.dart';
 import 'stok_menipis_page.dart';
@@ -22,7 +25,7 @@ class BerandaPage extends StatelessWidget {
       final held = r is Doc && r.status == 'diajukan';
       final String msg;
       if (type == 'masuk') {
-        msg = 'Barang masuk tercatat, stok gudang bertambah. Menunggu verifikasi harga oleh owner';
+        msg = 'Barang masuk tercatat, stok gudang bertambah.${r is Doc && r.bayarMode == 'tempo' ? ' Nota tempo masuk ke Tagihan grosir.' : ''} Menunggu verifikasi harga oleh owner';
       } else if (type == 'minta_cabang') {
         msg = held ? 'Jumlah jauh di atas biasanya, menunggu ACC owner' : 'Permintaan terkirim ke gudang';
       } else if (type == 'setor_jadi') {
@@ -173,6 +176,7 @@ class BerandaPage extends StatelessWidget {
     final awal = DateTime(n.year, n.month, 1);
     final bulanIni = s.docs.where((d) => bonTerbit(d) && !bonWaktu(d).isBefore(awal)).toList();
     final total = bulanIni.fold<double>(0, (a, d) => a + bonNilai(d));
+    final sisaSemua = s.docs.where(bonTerbit).fold<double>(0, (a, d) => a + s.bonSisa(d));
     return Container(
       margin: const EdgeInsets.only(top: 12),
       decoration: cardDeco(),
@@ -186,9 +190,101 @@ class BerandaPage extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(s.isOwner ? 'Bon cabang bulan ini' : 'Bon cabang Anda bulan ini', style: TextStyle(fontSize: 12, color: Colors.grey[700])),
+                Text((s.isOwner || s.role == 'gudang') ? 'Bon cabang bulan ini' : 'Bon cabang Anda bulan ini', style: TextStyle(fontSize: 12, color: Colors.grey[700])),
                 Text(rp(total), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: navy)),
-                Text('${bulanIni.length} pengiriman', style: TextStyle(fontSize: 11, color: Colors.grey[700])),
+                Text('${bulanIni.length} pengiriman • sisa bon belum lunas ${rp(sisaSemua)}',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: sisaSemua > 0.5 ? red : Colors.grey[700])),
+              ]),
+            ),
+            const Icon(Icons.chevron_right, color: Colors.grey),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  /// Omzet dan keuntungan gudang bulan ini (gudang dan owner).
+  Widget _omzetCard(BuildContext context, AppState s) {
+    final n = DateTime.now();
+    final awal = DateTime(n.year, n.month, 1);
+    final bulanIni = s.docs.where((d) => bonTerbit(d) && !bonWaktu(d).isBefore(awal)).toList();
+    final omzet = bulanIni.fold<double>(0, (a, d) => a + bonNilai(d));
+    final laba = bulanIni.fold<double>(0, (a, d) => a + bonLaba(d));
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      decoration: cardDeco(),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OmzetPage())),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(children: [
+            const Icon(Icons.trending_up, size: 34, color: navy),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Omzet gudang bulan ini', style: TextStyle(fontSize: 12, color: Colors.grey[700])),
+                Text(rp(omzet), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: navy)),
+                Text('Keuntungan ${rp(laba)} • ${bulanIni.length} pengiriman',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: laba < 0 ? red : green)),
+              ]),
+            ),
+            const Icon(Icons.chevron_right, color: Colors.grey),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  /// Tagihan grosir (nota tempo). Berwarna dan memuat pengingat bila ada yang lewat / mendekati jatuh tempo.
+  Widget _tagihanCard(BuildContext context, AppState s) {
+    final belum = s.tagihanBelumLunas;
+    final mendekati = s.tagihanMendekati;
+    if (belum.isEmpty && s.tagihanSupplier.isEmpty) {
+      return Container(
+        margin: const EdgeInsets.only(top: 12),
+        decoration: cardDeco(),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TagihanPage())),
+          child: const Padding(
+            padding: EdgeInsets.all(14),
+            child: Row(children: [
+              Icon(Icons.request_quote_outlined, size: 34, color: navy),
+              SizedBox(width: 12),
+              Expanded(child: Text('Tagihan grosir: belum ada nota tempo', style: TextStyle(fontWeight: FontWeight.w700))),
+              Icon(Icons.chevron_right, color: Colors.grey),
+            ]),
+          ),
+        ),
+      );
+    }
+    final total = belum.fold<double>(0, (a, d) => a + s.masukSisa(d));
+    final lewat = mendekati.where((d) => tagihanStatus(d, s.masukSisa(d)) == 'lewat').length;
+    final warna = lewat > 0 ? red : (mendekati.isNotEmpty ? orange : navy);
+    final bg = lewat > 0 ? const Color(0xFFFFF5F5) : (mendekati.isNotEmpty ? const Color(0xFFFFF4E0) : Colors.white);
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      decoration: cardDeco(color: bg),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TagihanPage())),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(children: [
+            Icon(mendekati.isNotEmpty ? Icons.notifications_active_outlined : Icons.request_quote_outlined, size: 34, color: warna),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Tagihan grosir belum dibayar', style: TextStyle(fontSize: 12, color: Colors.grey[700])),
+                Text(rp(total), style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: warna)),
+                if (mendekati.isNotEmpty)
+                  Text(
+                    '${lewat > 0 ? '$lewat nota lewat jatuh tempo' : ''}${lewat > 0 && mendekati.length > lewat ? ', ' : ''}${mendekati.length > lewat ? '${mendekati.length - lewat} nota segera jatuh tempo' : ''}',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: warna),
+                  )
+                else
+                  Text('${belum.length} nota belum lunas', style: TextStyle(fontSize: 11, color: Colors.grey[700])),
               ]),
             ),
             const Icon(Icons.chevron_right, color: Colors.grey),
@@ -279,7 +375,9 @@ class BerandaPage extends StatelessWidget {
           ]),
         ),
         if (s.isOwner) _nilaiCard(context, s),
-        if (s.isOwner || me.role == 'cabang') _bonCard(context, s),
+        if (s.isOwner || me.role == 'gudang') _tagihanCard(context, s),
+        if (s.isOwner || me.role == 'gudang') _omzetCard(context, s),
+        if (s.isOwner || me.role == 'cabang' || me.role == 'gudang') _bonCard(context, s),
         if (s.isOwner || me.role == 'gudang') _menipisCard(context, s),
         if (me.role != 'owner') ...[const SizedBox(height: 12), buttons],
         const SizedBox(height: 16),

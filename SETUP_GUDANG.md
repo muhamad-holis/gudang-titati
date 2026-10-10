@@ -59,12 +59,40 @@ Tiap dokumen punya nota. Buka dokumen, lalu ketuk tombol "Lihat faktur/surat jal
 - Toleransi rendemen dan batas permintaan cabang bisa diubah di Master -> Aturan ACC.
 - Dokumen lama berstatus "Menunggu ACC" tetap bisa di-ACC owner.
 
+## Omzet gudang, bon cabang bernilai jual, tagihan grosir
+Jalankan `supabase_update_omzet_tagihan.sql` PALING AKHIR (setelah semua file lain, termasuk `supabase_update_hapus_barang.sql`). Aman diulang. Tidak mengganti `create_doc`/`send_doc`/`receive_doc`, jadi alur lama tidak berubah.
+
+### Harga jual ke cabang dan omzet
+- **Kirim ke Cabang**: kepala gudang mengisi **harga jual per barang** setiap kirim. Layar menampilkan modal rata-rata (dari Barang Masuk) dan estimasi untung. Harga jual boleh berbeda tiap transaksi.
+- **Permintaan Cabang**: saat gudang menekan Kirim, muncul isian harga jual per barang. Barang yang stoknya kosong tidak wajib berharga.
+- Pengiriman lama (sebelum update ini) belum punya harga jual. Buka dokumennya, tekan **Atur harga jual** (hanya bisa selama belum ada pembayaran).
+- **Omzet** = harga jual x jumlah diterima cabang (belum diterima: jumlah dikirim). **Keuntungan** = omzet - modal. Modal = harga beli rata-rata yang dikunci saat barang dikirim (kolom `unit_price` lama).
+- Beranda gudang dan owner punya kartu **Omzet gudang bulan ini**; ketuk untuk rincian per periode, per cabang, per barang, dan per transaksi bertanggal.
+
+### Bon cabang dan pelunasan
+- Bon cabang kini bernilai harga jual. Tiap bon punya status: Belum lunas, Dicicil, Lunas.
+- **Catat pelunasan** dilakukan kepala gudang atau owner (gudang yang menerima uangnya). Boleh dicicil, pilih transfer atau cash, tanggal bayar, catatan. Pelunasan baru bisa dicatat setelah cabang menekan Terima.
+- Riwayat pelunasan tampil di detail bon. Salah catat hanya bisa dibatalkan owner (tombol panah balik), tercatat di Riwayat dokumen.
+- Akun cabang bisa melihat bon, status, dan riwayat pelunasan cabangnya sendiri.
+
+### Nota grosir tempo dan tagihan supplier
+- Di **Barang Masuk**, kepala gudang wajib memilih cara bayar: **Cash** (langsung lunas) atau **Tempo** (isi tanggal jatuh tempo).
+- Nota tempo masuk ke **Tagihan grosir** (kartu di Beranda gudang dan owner). Kartu berubah oranye/merah bila ada nota yang jatuh temponya tinggal 3 hari atau kurang, atau sudah lewat. Ini pengingat di dalam aplikasi (bukan notifikasi push ke HP).
+- Tombol **Sudah dibayar**: catat jumlah (bawaan = sisa penuh, boleh cicil), transfer/cash, tanggal. Riwayat pembayaran ada di detail nota dan di tab Riwayat bayar pada halaman Tagihan grosir.
+- Dokumen Barang Masuk lama dianggap sudah lunas. Bila ada yang sebenarnya belum dibayar, buka dokumennya, tekan **Atur cara bayar**, pilih Tempo.
+
+### Daftar barang diisi gudang sendiri
+- Akun gudang kini punya tab **Barang** (sebelumnya hanya owner punya Master): tambah, ubah, hapus barang, dan tambah kategori. Gabung barang dan Aturan ACC tetap khusus owner.
+- Barang baru yang ditambah gudang otomatis berjalur "diolah / langsung ke cabang", jadi bisa langsung dikirim ke cabang.
+- Opsional: `supabase_bersihkan_master_bawaan.sql` menghapus 51 barang bawaan dari master data yang belum pernah dipakai transaksi. Jalankan bagian preview dulu, cek daftarnya, baru aktifkan bagian hapus.
+
 ## Aturan penting
 - Stok pengirim berkurang saat dikirim; stok penerima bertambah hanya setelah penerima menekan Terima.
 - Jumlah diterima bisa lebih kecil dari yang dikirim; selisih tercatat dan ditandai merah untuk owner.
 - Semua aksi tercatat (siapa, kapan) di bagian Riwayat tiap dokumen.
 - Daftar bahan baru bisa ditambah langsung saat membuat dokumen; owner bisa mengubah/menonaktifkan di tab Master.
 - Aplikasi belum punya ikon khusus (memakai ikon bawaan). Tambahkan folder `android_res/` bila sudah ada.
+- Aplikasi memuat 400 dokumen terbaru; nota tempo yang jauh lebih lama dari itu tidak akan tampil di Tagihan grosir.
 - Aplikasi belum punya fitur lupa password; reset lewat Supabase (Authentication -> Users).
 
 ### Nilai stok gudang (khusus owner)

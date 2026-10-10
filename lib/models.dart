@@ -78,6 +78,9 @@ class AppRules {
 class DocLine {
   final String id, itemId, role, name, unit, kind;
   final double qty, price;
+
+  /// Harga jual gudang ke cabang (bon). price = modal (harga beli rata-rata saat dikirim).
+  final double sellPrice;
   final double? qtyReceived;
 
   /// Jumlah yang diminta cabang bila stok gudang kosong/kurang saat dikirim (null = tidak ada masalah).
@@ -92,6 +95,7 @@ class DocLine {
     required this.kind,
     required this.qty,
     required this.price,
+    this.sellPrice = 0,
     this.qtyReceived,
     this.qtyMinta,
     this.kosong = false,
@@ -107,6 +111,7 @@ class DocLine {
       kind: (it['kind'] as String?) ?? '',
       qty: toD(j['qty']),
       price: toD(j['unit_price']),
+      sellPrice: toD(j['sell_price']),
       qtyReceived: j['qty_received'] == null ? null : toD(j['qty_received']),
       qtyMinta: j['qty_minta'] == null ? null : toD(j['qty_minta']),
       kosong: (j['kosong'] as bool?) ?? false,
@@ -122,6 +127,12 @@ class Doc {
 
   /// Alasan dokumen ini menunggu ACC owner (setoran / permintaan yang menyimpang).
   final String accReason;
+
+  /// Khusus Barang Masuk: '' (dokumen lama, dianggap lunas), 'cash' (lunas), 'tempo' (dibayar belakangan).
+  final String bayarMode;
+
+  /// Batas bayar nota tempo (tanggal saja).
+  final DateTime? jatuhTempo;
   final DateTime createdAt;
   final DateTime? approvedAt, sentAt, receivedAt;
   final List<DocLine> lines;
@@ -140,6 +151,8 @@ class Doc {
     required this.receivedByName,
     this.verif = '',
     this.accReason = '',
+    this.bayarMode = '',
+    this.jatuhTempo,
     required this.createdAt,
     this.approvedAt,
     this.sentAt,
@@ -164,6 +177,8 @@ class Doc {
       receivedByName: (j['received_by_name'] as String?) ?? '',
       verif: (j['verif'] as String?) ?? '',
       accReason: (j['acc_reason'] as String?) ?? '',
+      bayarMode: (j['bayar_mode'] as String?) ?? '',
+      jatuhTempo: j['jatuh_tempo'] == null ? null : DateTime.parse(j['jatuh_tempo'] as String),
       createdAt: DateTime.parse(j['created_at'] as String).toLocal(),
       approvedAt: dt(j['approved_at']),
       sentAt: dt(j['sent_at']),
@@ -328,4 +343,34 @@ class LowStock {
   final double qty;
   LowStock(this.item, this.qty);
   double get kurang => item.stokMin - qty;
+}
+
+
+/// Satu pembayaran: pelunasan bon cabang (kind 'bon') atau pembayaran ke grosir (kind 'supplier').
+class Payment {
+  final int id;
+  final String docId, kind, method, note, byName;
+  final double amount;
+  final DateTime paidAt;
+  Payment({
+    required this.id,
+    required this.docId,
+    required this.kind,
+    required this.method,
+    required this.note,
+    required this.byName,
+    required this.amount,
+    required this.paidAt,
+  });
+  factory Payment.fromJson(Map<String, dynamic> j) => Payment(
+        id: (j['id'] as num).toInt(),
+        docId: j['doc_id'] as String,
+        kind: (j['kind'] as String?) ?? '',
+        method: (j['method'] as String?) ?? 'cash',
+        note: (j['note'] as String?) ?? '',
+        byName: (j['by_name'] as String?) ?? '',
+        amount: toD(j['amount']),
+        paidAt: DateTime.parse(j['paid_at'] as String),
+      );
+  String get methodLabel => method == 'transfer' ? 'Transfer' : 'Cash';
 }
