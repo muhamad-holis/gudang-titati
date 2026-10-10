@@ -181,7 +181,7 @@ class _DocFormPageState extends State<DocFormPage> {
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(l.item.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-              Text('${l.item.category} • ${l.item.unit}', style: TextStyle(fontSize: 12, color: Colors.grey[700])),
+              Text('${l.item.category} • ${l.item.unit}${l.item.punyaEcer ? ' (isi ${fmtQty(l.item.isiEcer)} ${l.item.unitEcer})' : ''}', style: TextStyle(fontSize: 12, color: Colors.grey[700])),
               if (stk != null)
                 Text('Stok tersedia: ${fmtQty(stk)} ${l.item.unit}${over ? ' (kurang)' : ''}',
                     style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: over ? red : green)),

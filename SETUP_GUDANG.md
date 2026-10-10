@@ -92,6 +92,15 @@ Jalankan `supabase_update_harga_standar.sql` SETELAH `supabase_update_omzet_tagi
 - **Bahan jadi (bakso hasil produksi) boleh tanpa harga**: kolom harga boleh dikosongkan, pengiriman tetap jalan. Isi menyusul lewat tombol **Atur harga jual** di detail dokumen (hanya selama belum ada pembayaran bon). Barang selain bahan jadi tetap wajib berharga jual.
 - Kiriman yang belum berharga belum ikut omzet dan bon. Kartu **Omzet gudang** di Beranda menampilkan pengingat berwarna oranye selama masih ada.
 
+### Satuan ganda: gudang dus, cabang botol (minuman)
+Jalankan `supabase_update_satuan_ecer.sql` SETELAH `supabase_update_kirim_cabang.sql` dan `supabase_update_stok_kosong.sql`. Aman diulang. Jangan menjalankan ulang `supabase_update_kirim_cabang.sql` sesudahnya (fungsi `receive_doc` akan kembali ke versi lama).
+- Satu nama barang saja, mis. "Air Mineral 600 ml" dengan satuan **dus**. Di tab Barang, ketuk barang, isi **Satuan eceran di cabang** (mis. `botol`) dan **Isi per dus** (mis. `24`). Isi per dus diatur per barang. Kolom ini muncul untuk barang siap jual dan bahan jadi.
+- **Gudang dan semua dokumen tetap dalam dus**: Barang Masuk, Kirim ke Cabang, Permintaan Cabang, bon, omzet, dan tagihan. Harga beli dan harga jual per dus.
+- **Stok cabang dalam botol**: saat cabang menekan Terima, stok cabang bertambah jumlah diterima x isi per dus (2 dus = 48 botol). Catat Penjualan, stok cabang, dan Rekap (Masuk, Terjual, Sisa) memakai botol. Detail dokumen menampilkan baris "Di cabang: 48 botol".
+- Bila barang sudah punya stok di cabang (masih dalam dus) saat satuan eceran pertama kali diatur, stok itu otomatis dikonversi ke botol dan tercatat sebagai koreksi stok. Sebaiknya atur satuan eceran sebelum barang itu dipakai di cabang.
+- Satuan eceran tidak bisa dihapus selama masih ada stok di cabang. Koreksi stok owner untuk lokasi cabang memakai satuan botol, untuk gudang memakai dus.
+- Hindari Gabung barang antara barang bersatuan eceran dan yang tidak (stok cabang bisa tercampur satuan).
+
 ## Aturan penting
 - Stok pengirim berkurang saat dikirim; stok penerima bertambah hanya setelah penerima menekan Terima.
 - Jumlah diterima bisa lebih kecil dari yang dikirim; selisih tercatat dan ditandai merah untuk owner.

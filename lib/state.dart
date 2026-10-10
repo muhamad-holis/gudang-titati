@@ -441,6 +441,12 @@ class AppState extends ChangeNotifier {
     return qty > 0 ? nilai / qty : 0;
   }
 
+  /// Atur satuan eceran barang (kosongkan [unit] untuk menghapus). Stok cabang yang sudah ada ikut dikonversi di server.
+  Future<void> aturSatuanEcer(String itemId, String unit, double isi) async {
+    await sb.rpc('atur_satuan_ecer', params: {'p_item': itemId, 'p_unit': unit.trim(), 'p_isi': isi});
+    await refresh(silent: true);
+  }
+
   /// Isian awal harga jual: harga jual standar barang bila sudah diatur, selain itu harga jual terakhir. 0 bila belum ada.
   double hargaAwal(String itemId, {String? cabang}) {
     final std = itemById(itemId)?.sellPriceDefault ?? 0;

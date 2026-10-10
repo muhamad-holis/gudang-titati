@@ -32,6 +32,10 @@ class Item {
 
   /// Harga jual standar ke cabang (isian awal saat kirim). 0 = belum diatur.
   final double sellPriceDefault;
+
+  /// Satuan eceran di cabang (mis. botol) dan isi per satuan barang (mis. 24 botol per dus). Kosong/1 = tanpa konversi.
+  final String unitEcer;
+  final double isiEcer;
   Item({
     required this.id,
     required this.name,
@@ -45,7 +49,15 @@ class Item {
     this.keCabang = false,
     this.stokMin = 0,
     this.sellPriceDefault = 0,
+    this.unitEcer = '',
+    this.isiEcer = 1,
   });
+
+  /// Barang dicatat gudang dalam [unit] (dus) tetapi stok dan penjualan cabang dalam [unitEcer] (botol).
+  bool get punyaEcer => unitEcer.isNotEmpty && isiEcer > 1;
+
+  /// Satuan yang dipakai di sebuah lokasi: cabang memakai satuan eceran bila ada, gudang/produksi memakai satuan barang.
+  String unitDi(String location) => (punyaEcer && location != 'gudang' && location != 'produksi') ? unitEcer : unit;
 
   /// Jalur bahan mentah: 'olah' (hanya produksi), 'cabang' (langsung ke cabang), 'dua' (keduanya).
   String get jalur => !untukProduksi ? 'cabang' : (keCabang ? 'dua' : 'olah');
@@ -62,6 +74,8 @@ class Item {
         keCabang: (j['ke_cabang'] as bool?) ?? false,
         stokMin: j['stok_min'] == null ? 0 : toD(j['stok_min']),
         sellPriceDefault: j['sell_price_default'] == null ? 0 : toD(j['sell_price_default']),
+        unitEcer: (j['unit_ecer'] as String?) ?? '',
+        isiEcer: j['isi_ecer'] == null ? 1 : toD(j['isi_ecer']),
       );
 }
 

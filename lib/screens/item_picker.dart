@@ -277,6 +277,8 @@ Future<bool?> editItemDialog(BuildContext context, AppState s, Item it) {
   var jalur = it.jalur;
   final rend = TextEditingController(text: it.rendemenStd == null ? '' : fmtQty(it.rendemenStd!));
   final minStok = TextEditingController(text: it.stokMin > 0 ? fmtQty(it.stokMin) : '');
+  final unitEcer = TextEditingController(text: it.unitEcer);
+  final isiEcer = TextEditingController(text: it.punyaEcer ? fmtQty(it.isiEcer) : '');
   final hargaStd = TextEditingController(text: it.sellPriceDefault > 0 ? it.sellPriceDefault.round().toString() : '');
   String? err;
   var saving = false;
@@ -319,6 +321,34 @@ Future<bool?> editItemDialog(BuildContext context, AppState s, Item it) {
                 ),
               ),
             ),
+            if (it.kind == 'jadi' || siap) ...[
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: TextField(
+                  controller: unitEcer,
+                  onChanged: (_) => setS(() {}),
+                  decoration: InputDecoration(
+                    labelText: 'Satuan eceran di cabang (opsional)',
+                    helperText: 'Mis. botol, bila gudang mencatat dalam ${unit.text.trim().isEmpty ? it.unit : unit.text.trim()} tetapi cabang menjual ecer. Kosong = tanpa konversi.',
+                    helperMaxLines: 3,
+                  ),
+                ),
+              ),
+              if (unitEcer.text.trim().isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: TextField(
+                    controller: isiEcer,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      labelText: 'Isi per ${unit.text.trim().isEmpty ? it.unit : unit.text.trim()}',
+                      suffixText: unitEcer.text.trim(),
+                      helperText: 'Mis. 24 botol per dus. Stok cabang otomatis dihitung dalam ${unitEcer.text.trim()} saat cabang menekan Terima.',
+                      helperMaxLines: 3,
+                    ),
+                  ),
+                ),
+            ],
             if (it.kind == 'jadi')
               Padding(
                 padding: const EdgeInsets.only(top: 6),
@@ -448,8 +478,20 @@ Future<bool?> editItemDialog(BuildContext context, AppState s, Item it) {
                       }
                       newHarga = h;
                     }
+                    final ecerUnit = (it.kind == 'jadi' || siap) ? unitEcer.text.trim() : it.unitEcer;
+                    var ecerIsi = 1.0;
+                    if (ecerUnit.isNotEmpty) {
+                      final v = parseQty(isiEcer.text);
+                      if (v == null || v <= 1 || v != v.truncateToDouble()) {
+                        setS(() => err = 'Isi per ${unit.text.trim()} harus bilangan bulat lebih dari 1');
+                        return;
+                      }
+                      ecerIsi = v;
+                    }
+                    final ecerBerubah = ecerUnit != it.unitEcer || (ecerUnit.isNotEmpty && ecerIsi != it.isiEcer);
                     setS(() => saving = true);
                     try {
+                      if (ecerBerubah) await s.aturSatuanEcer(it.id, ecerUnit, ecerIsi);
                       await s.updateItem(it.id,
                           name: name.text,
                           category: cat.text,

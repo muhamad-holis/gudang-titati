@@ -543,6 +543,14 @@ class _DocDetailPageState extends State<DocDetailPage> {
               const Text('Belum ada harga jual', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: orange)),
             if (bonTerbit(d) && l.sellPrice > 0 && l.price > 0 && (context.read<AppState>().role == 'gudang' || context.read<AppState>().isOwner))
               Text('Modal ${rp(l.price)} • untung ${rp((l.sellPrice - l.price) * bonQty(l))}', style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+            if (isBonDoc(d))
+              Builder(builder: (_) {
+                final it = context.read<AppState>().itemById(l.itemId);
+                if (it == null || !it.punyaEcer) return const SizedBox.shrink();
+                final q = l.qtyReceived ?? l.qty;
+                return Text('Di cabang: ${fmtQty(q * it.isiEcer)} ${it.unitEcer} (isi ${fmtQty(it.isiEcer)} per ${it.unit})',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[700]));
+              }),
             if (l.qtyReceived != null && (d.type != 'setor_jadi' || l.role == 'hasil') && d.type != 'masuk')
               Text('Diterima ${fmtQty(l.qtyReceived!)} ${l.unit}${diff ? '  (selisih ${fmtQty(l.qtyReceived! - l.qty)})' : ''}',
                   style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: diff ? red : green)),

@@ -8,6 +8,7 @@ import 'item_picker.dart';
 
 Future<void> koreksiDialog(BuildContext context, AppState s, String location, Item item) async {
   final cur = s.stockAt(location, item.id);
+  final unitLok = item.unitDi(location);
   final qty = TextEditingController(text: fmtQty(cur));
   final reason = TextEditingController();
   String? err;
@@ -20,12 +21,12 @@ Future<void> koreksiDialog(BuildContext context, AppState s, String location, It
         content: SingleChildScrollView(
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('${item.name} • ${locLabel(location)}', style: const TextStyle(fontWeight: FontWeight.w700)),
-            Text('Stok sekarang: ${fmtQty(cur)} ${item.unit}', style: TextStyle(color: Colors.grey[700], fontSize: 13)),
+            Text('Stok sekarang: ${fmtQty(cur)} $unitLok', style: TextStyle(color: Colors.grey[700], fontSize: 13)),
             const SizedBox(height: 8),
             TextField(
               controller: qty,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(labelText: 'Stok seharusnya', suffixText: item.unit),
+              decoration: InputDecoration(labelText: 'Stok seharusnya', suffixText: unitLok),
             ),
             TextField(controller: reason, decoration: const InputDecoration(labelText: 'Alasan (wajib, mis. hasil hitung fisik)')),
             if (err != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(err!, style: const TextStyle(color: red))),
