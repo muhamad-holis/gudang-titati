@@ -29,13 +29,6 @@ class Item {
 
   /// Batas stok minimum di gudang. 0 = tidak dipantau.
   final double stokMin;
-
-  /// Harga jual standar ke cabang (isian awal saat kirim). 0 = belum diatur.
-  final double sellPriceDefault;
-
-  /// Satuan eceran di cabang (mis. botol) dan isi per satuan barang (mis. 24 botol per dus). Kosong/1 = tanpa konversi.
-  final String unitEcer;
-  final double isiEcer;
   Item({
     required this.id,
     required this.name,
@@ -48,16 +41,7 @@ class Item {
     this.untukProduksi = true,
     this.keCabang = false,
     this.stokMin = 0,
-    this.sellPriceDefault = 0,
-    this.unitEcer = '',
-    this.isiEcer = 1,
   });
-
-  /// Barang dicatat gudang dalam [unit] (dus) tetapi stok dan penjualan cabang dalam [unitEcer] (botol).
-  bool get punyaEcer => unitEcer.isNotEmpty && isiEcer > 1;
-
-  /// Satuan yang dipakai di sebuah lokasi: cabang memakai satuan eceran bila ada, gudang/produksi memakai satuan barang.
-  String unitDi(String location) => (punyaEcer && location != 'gudang' && location != 'produksi') ? unitEcer : unit;
 
   /// Jalur bahan mentah: 'olah' (hanya produksi), 'cabang' (langsung ke cabang), 'dua' (keduanya).
   String get jalur => !untukProduksi ? 'cabang' : (keCabang ? 'dua' : 'olah');
@@ -73,9 +57,6 @@ class Item {
         untukProduksi: (j['untuk_produksi'] as bool?) ?? true,
         keCabang: (j['ke_cabang'] as bool?) ?? false,
         stokMin: j['stok_min'] == null ? 0 : toD(j['stok_min']),
-        sellPriceDefault: j['sell_price_default'] == null ? 0 : toD(j['sell_price_default']),
-        unitEcer: (j['unit_ecer'] as String?) ?? '',
-        isiEcer: j['isi_ecer'] == null ? 1 : toD(j['isi_ecer']),
       );
 }
 
@@ -97,9 +78,6 @@ class AppRules {
 class DocLine {
   final String id, itemId, role, name, unit, kind;
   final double qty, price;
-
-  /// Harga jual gudang ke cabang (bon). price = modal (harga beli rata-rata saat dikirim).
-  final double sellPrice;
   final double? qtyReceived;
 
   /// Jumlah yang diminta cabang bila stok gudang kosong/kurang saat dikirim (null = tidak ada masalah).
@@ -114,7 +92,6 @@ class DocLine {
     required this.kind,
     required this.qty,
     required this.price,
-    this.sellPrice = 0,
     this.qtyReceived,
     this.qtyMinta,
     this.kosong = false,
@@ -130,7 +107,6 @@ class DocLine {
       kind: (it['kind'] as String?) ?? '',
       qty: toD(j['qty']),
       price: toD(j['unit_price']),
-      sellPrice: toD(j['sell_price']),
       qtyReceived: j['qty_received'] == null ? null : toD(j['qty_received']),
       qtyMinta: j['qty_minta'] == null ? null : toD(j['qty_minta']),
       kosong: (j['kosong'] as bool?) ?? false,
@@ -146,12 +122,6 @@ class Doc {
 
   /// Alasan dokumen ini menunggu ACC owner (setoran / permintaan yang menyimpang).
   final String accReason;
-
-  /// Khusus Barang Masuk: '' (dokumen lama, dianggap lunas), 'cash' (lunas), 'tempo' (dibayar belakangan).
-  final String bayarMode;
-
-  /// Batas bayar nota tempo (tanggal saja).
-  final DateTime? jatuhTempo;
   final DateTime createdAt;
   final DateTime? approvedAt, sentAt, receivedAt;
   final List<DocLine> lines;
@@ -170,8 +140,6 @@ class Doc {
     required this.receivedByName,
     this.verif = '',
     this.accReason = '',
-    this.bayarMode = '',
-    this.jatuhTempo,
     required this.createdAt,
     this.approvedAt,
     this.sentAt,
@@ -196,8 +164,6 @@ class Doc {
       receivedByName: (j['received_by_name'] as String?) ?? '',
       verif: (j['verif'] as String?) ?? '',
       accReason: (j['acc_reason'] as String?) ?? '',
-      bayarMode: (j['bayar_mode'] as String?) ?? '',
-      jatuhTempo: j['jatuh_tempo'] == null ? null : DateTime.parse(j['jatuh_tempo'] as String),
       createdAt: DateTime.parse(j['created_at'] as String).toLocal(),
       approvedAt: dt(j['approved_at']),
       sentAt: dt(j['sent_at']),
@@ -362,34 +328,4 @@ class LowStock {
   final double qty;
   LowStock(this.item, this.qty);
   double get kurang => item.stokMin - qty;
-}
-
-
-/// Satu pembayaran: pelunasan bon cabang (kind 'bon') atau pembayaran ke grosir (kind 'supplier').
-class Payment {
-  final int id;
-  final String docId, kind, method, note, byName;
-  final double amount;
-  final DateTime paidAt;
-  Payment({
-    required this.id,
-    required this.docId,
-    required this.kind,
-    required this.method,
-    required this.note,
-    required this.byName,
-    required this.amount,
-    required this.paidAt,
-  });
-  factory Payment.fromJson(Map<String, dynamic> j) => Payment(
-        id: (j['id'] as num).toInt(),
-        docId: j['doc_id'] as String,
-        kind: (j['kind'] as String?) ?? '',
-        method: (j['method'] as String?) ?? 'cash',
-        note: (j['note'] as String?) ?? '',
-        byName: (j['by_name'] as String?) ?? '',
-        amount: toD(j['amount']),
-        paidAt: DateTime.parse(j['paid_at'] as String),
-      );
-  String get methodLabel => method == 'transfer' ? 'Transfer' : 'Cash';
 }

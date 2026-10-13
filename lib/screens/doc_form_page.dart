@@ -11,12 +11,10 @@ class _FLine {
   final String role;
   final TextEditingController qty = TextEditingController();
   final TextEditingController price = TextEditingController();
-  final TextEditingController sell = TextEditingController(); // harga jual ke cabang (Kirim ke Cabang)
   _FLine(this.item, this.role);
   void dispose() {
     qty.dispose();
     price.dispose();
-    sell.dispose();
   }
 }
 
@@ -34,8 +32,6 @@ class _DocFormPageState extends State<DocFormPage> {
   bool saving = false;
   String? error;
   String? branch; // cabang tujuan (khusus Kirim ke Cabang)
-  String? bayarMode; // 'cash' | 'tempo' (khusus Barang Masuk)
-  DateTime? jatuhTempo; // wajib bila tempo
 
   @override
   void dispose() {
@@ -54,16 +50,11 @@ class _DocFormPageState extends State<DocFormPage> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bahan itu sudah ada di daftar')));
       return;
     }
-    final fl = _FLine(it, role);
-    if (widget.type == 'kirim_cabang') {
-      final awal = context.read<AppState>().hargaAwal(it.id, cabang: branch);
-      if (awal > 0) fl.sell.text = awal.round().toString();
-    }
-    setState(() => lines.add(fl));
+    setState(() => lines.add(_FLine(it, role)));
   }
 
-  /// Validasi form. Mengembalikan payload, atau null (pesan error sudah diisi).
-  List<Map<String, dynamic>>? _validate() {
+  /// Validasi form. Mengembalikan daftar baris bila valid; bila tidak, mengisi pesan error dan mengembalikan null.
+  List<Map<String, dynamic>>? _payload() {
     final payload = <Map<String, dynamic>>[];
     for (final l in lines) {
       final q = parseQty(l.qty.text);
@@ -76,12 +67,7 @@ class _DocFormPageState extends State<DocFormPage> {
         setState(() => error = 'Isi harga satuan untuk ${l.item.name}');
         return null;
       }
-      final sp = parseQty(l.sell.text) ?? 0;
-      if (widget.type == 'kirim_cabang' && sp <= 0 && l.item.kind != 'jadi') {
-        setState(() => error = 'Isi harga jual untuk ${l.item.name}');
-        return null;
-      }
-      payload.add({'item_id': l.item.id, 'qty': q, 'role': l.role, 'unit_price': pr, if (widget.type == 'kirim_cabang') 'sell_price': sp});
+      payload.add({'item_id': l.item.id, 'qty': q, 'role': l.role, 'unit_price': pr});
     }
     if (payload.isEmpty) {
       setState(() => error = 'Tambahkan minimal satu bahan');
@@ -95,22 +81,40 @@ class _DocFormPageState extends State<DocFormPage> {
       setState(() => error = 'Isi nama grosir / supplier');
       return null;
     }
-    if (widget.type == 'masuk' && bayarMode == null) {
-      setState(() => error = 'Pilih cara bayar nota: cash atau tempo');
-      return null;
-    }
-    if (widget.type == 'masuk' && bayarMode == 'tempo' && jatuhTempo == null) {
-      setState(() => error = 'Isi tanggal jatuh tempo');
-      return null;
-    }
     if (widget.type == 'kirim_cabang' && (branch == null || branch!.isEmpty)) {
       setState(() => error = 'Pilih cabang tujuan');
       return null;
     }
+    setState(() => error = null);
     return payload;
   }
 
-  Future<void> _save(List<Map<String, dynamic>> payload) async {
+  Future<void> _submit() async {
+    final p = _payload();
+    if (p != null) await _simpan(p);
+  }
+
+  /// Barang Masuk: tampilkan pratinjau (cek kecocokan + koreksi) dulu, baru simpan.
+  Future<void> _pratinjau() async {
+    if (_payload() == null) return;
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (c) => _PratinjauSheet(
+        lines: lines,
+        supplier: supplier.text.trim(),
+        note: note.text.trim(),
+        onRemove: (l) => setState(() => lines.remove(l)),
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final payload = _payload();
+    if (payload == null) return;
+    await _simpan(payload);
+  }
+
+  Future<void> _simpan(List<Map<String, dynamic>> payload) async {
     final s = context.read<AppState>();
     setState(() {
       saving = true;
@@ -118,14 +122,7 @@ class _DocFormPageState extends State<DocFormPage> {
     });
     try {
       // untuk Kirim ke Cabang, kolom "supplier" membawa nama cabang tujuan
-      final Doc? doc;
-      if (widget.type == 'masuk') {
-        doc = await s.createMasuk(supplier.text.trim(), note.text.trim(), payload, bayarMode!, bayarMode == 'tempo' ? jatuhTempo : null);
-      } else if (widget.type == 'kirim_cabang') {
-        doc = await s.createKirimCabang(branch!, note.text.trim(), payload);
-      } else {
-        doc = await s.createDoc(widget.type, supplier.text.trim(), note.text.trim(), payload);
-      }
+      final doc = await s.createDoc(widget.type, widget.type == 'kirim_cabang' ? branch! : supplier.text.trim(), note.text.trim(), payload);
       if (mounted) Navigator.pop<Object>(context, doc ?? true);
     } catch (e) {
       if (mounted) {
@@ -137,107 +134,7 @@ class _DocFormPageState extends State<DocFormPage> {
     }
   }
 
-  Future<void> _submit() async {
-    final payload = _validate();
-    if (payload == null) return;
-    // Barang Masuk: tidak langsung disimpan, harus lewat pratinjau + pengecekan dulu.
-    if (widget.type == 'masuk') {
-      setState(() => error = null);
-      final ok = await Navigator.push<bool>(
-        context,
-        MaterialPageRoute(
-          builder: (_) => _MasukPreviewPage(
-            lines: lines,
-            supplier: supplier,
-            note: note,
-            bayarInfo: bayarMode == 'tempo' ? 'Tempo • jatuh tempo ${jatuhTempo == null ? '-' : tgl(jatuhTempo!)}' : 'Cash (langsung lunas)',
-          ),
-        ),
-      );
-      if (!mounted) return;
-      setState(() {}); // koreksi di pratinjau mengubah isi form
-      if (ok != true) return;
-      final fresh = _validate(); // validasi ulang setelah koreksi
-      if (fresh == null) return;
-      await _save(fresh);
-      return;
-    }
-    await _save(payload);
-  }
-
-  Widget _lineTileJual(AppState s, _FLine l, {String? stockLoc}) {
-    final stk = stockLoc == null ? null : s.stockAt(stockLoc, l.item.id);
-    final q = parseQty(l.qty.text) ?? 0;
-    final over = stk != null && q > stk;
-    final modal = s.modalRata(l.item.id);
-    final jual = parseQty(l.sell.text) ?? 0;
-    final untung = (jual > 0 && modal > 0) ? (jual - modal) * q : null;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
-      decoration: cardDeco(),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(l.item.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-              Text('${l.item.category} • ${l.item.unit}${l.item.punyaEcer ? ' (isi ${fmtQty(l.item.isiEcer)} ${l.item.unitEcer})' : ''}', style: TextStyle(fontSize: 12, color: Colors.grey[700])),
-              if (stk != null)
-                Text('Stok tersedia: ${fmtQty(stk)} ${l.item.unit}${over ? ' (kurang)' : ''}',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: over ? red : green)),
-              Text(modal > 0 ? 'Modal rata-rata ${rp(modal)} / ${l.item.unit}' : 'Modal belum diketahui (belum pernah dibeli)',
-                  style: TextStyle(fontSize: 12, color: modal > 0 ? Colors.grey[700] : orange)),
-            ]),
-          ),
-          IconButton(
-            icon: const Icon(Icons.close, size: 20),
-            onPressed: () => setState(() {
-              lines.remove(l);
-              l.dispose();
-            }),
-          ),
-        ]),
-        const SizedBox(height: 8),
-        Padding(
-          padding: const EdgeInsets.only(right: 8),
-          child: Row(children: [
-            Expanded(
-              child: TextField(
-                controller: l.qty,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                onChanged: (_) => setState(() {}),
-                decoration: InputDecoration(labelText: 'Jumlah', suffixText: l.item.unit, isDense: true, border: const OutlineInputBorder()),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: TextField(
-                controller: l.sell,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                onChanged: (_) => setState(() {}),
-                decoration: InputDecoration(
-                    labelText: l.item.kind == 'jadi' ? 'Harga jual / ${l.item.unit} (boleh kosong)' : 'Harga jual / ${l.item.unit}',
-                    prefixText: 'Rp ',
-                    isDense: true,
-                    border: const OutlineInputBorder()),
-              ),
-            ),
-          ]),
-        ),
-        if (q > 0 && jual > 0)
-          Padding(
-            padding: const EdgeInsets.only(top: 6, right: 8),
-            child: Text(
-              'Bon ${rp(q * jual)}${untung == null ? '' : ' • untung ${rp(untung)}'}',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: (untung ?? 0) < 0 ? red : navy),
-            ),
-          ),
-      ]),
-    );
-  }
-
-  Widget _lineTile(AppState s, _FLine l, {String? stockLoc, bool withPrice = false, bool withSell = false}) {
-    if (withSell) return _lineTileJual(s, l, stockLoc: stockLoc);
+  Widget _lineTile(AppState s, _FLine l, {String? stockLoc, bool withPrice = false}) {
     final stk = stockLoc == null ? null : s.stockAt(stockLoc, l.item.id);
     final q = parseQty(l.qty.text) ?? 0;
     final over = stk != null && q > stk;
@@ -256,7 +153,7 @@ class _DocFormPageState extends State<DocFormPage> {
           ]),
         ),
         SizedBox(
-          width: 92,
+          width: 84,
           child: TextField(
             controller: l.qty,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -271,7 +168,7 @@ class _DocFormPageState extends State<DocFormPage> {
             child: TextField(
               controller: l.price,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(labelText: 'Harga', isDense: true, border: OutlineInputBorder()),
+              decoration: const InputDecoration(labelText: 'Harga/sat.', isDense: true, border: OutlineInputBorder()),
             ),
           ),
         ],
@@ -286,60 +183,17 @@ class _DocFormPageState extends State<DocFormPage> {
     );
   }
 
-  Widget _section(AppState s, String title, String role, String kind,
-      {String? stockLoc, bool withPrice = false, bool withSell = false, bool sellable = false, bool noSiap = false}) {
+  Widget _section(AppState s, String title, String role, String kind, {String? stockLoc, bool withPrice = false, bool sellable = false, bool noSiap = false}) {
     final mine = lines.where((l) => l.role == role).toList();
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Padding(padding: const EdgeInsets.fromLTRB(2, 14, 2, 8), child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800))),
-      for (final l in mine) _lineTile(s, l, stockLoc: stockLoc, withPrice: withPrice, withSell: withSell),
+      for (final l in mine) _lineTile(s, l, stockLoc: stockLoc, withPrice: withPrice),
       OutlinedButton.icon(
         style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(46)),
         onPressed: () => _add(role, kind, stockLocation: stockLoc, sellable: sellable, noSiap: noSiap),
         icon: const Icon(Icons.add),
         label: Text(sellable ? 'Tambah barang' : (kind == 'jadi' ? 'Tambah bahan jadi' : 'Tambah bahan mentah')),
       ),
-    ]);
-  }
-
-  /// Cara bayar nota grosir: cash (lunas) atau tempo (ada jatuh tempo).
-  Widget _bayarSection() {
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Padding(padding: EdgeInsets.fromLTRB(2, 14, 2, 8), child: Text('Cara bayar nota', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800))),
-      Wrap(spacing: 8, children: [
-        ChoiceChip(
-          label: const Text('Cash (lunas)'),
-          selected: bayarMode == 'cash',
-          onSelected: (_) => setState(() => bayarMode = 'cash'),
-        ),
-        ChoiceChip(
-          label: const Text('Tempo (bayar nanti)'),
-          selected: bayarMode == 'tempo',
-          onSelected: (_) => setState(() => bayarMode = 'tempo'),
-        ),
-      ]),
-      if (bayarMode == 'tempo') ...[
-        const SizedBox(height: 8),
-        OutlinedButton.icon(
-          style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(46)),
-          onPressed: () async {
-            final now = DateTime.now();
-            final today = DateTime(now.year, now.month, now.day);
-            final p = await showDatePicker(
-              context: context,
-              initialDate: jatuhTempo ?? today.add(const Duration(days: 7)),
-              firstDate: today,
-              lastDate: today.add(const Duration(days: 365)),
-            );
-            if (p != null) setState(() => jatuhTempo = p);
-          },
-          icon: const Icon(Icons.event, size: 20),
-          label: Text(jatuhTempo == null ? 'Pilih tanggal jatuh tempo' : 'Jatuh tempo: ${tgl(jatuhTempo!)}'),
-        ),
-        const Padding(
-          padding: EdgeInsets.only(top: 4, left: 2),
-          child: Text('Nota ini masuk daftar Tagihan Grosir dan diingatkan menjelang jatuh tempo.', style: TextStyle(fontSize: 12, color: Colors.grey)),
-        ),
-      ],
     ]);
   }
 
@@ -355,9 +209,9 @@ class _DocFormPageState extends State<DocFormPage> {
           decoration: cardDeco(color: const Color(0xFFEAF2FF)),
           child: Text(
               t == 'masuk'
-                  ? 'Isi barang & harga, lalu tekan Pratinjau untuk mencocokkan dengan belanjaan/nota sebelum disimpan. Stok gudang bertambah setelah disimpan. Owner akan memverifikasi harga dan pembelian.'
+                  ? 'Cek dulu lewat Pratinjau. Stok gudang bertambah setelah Anda menyimpan dari pratinjau. Harga wajib diisi: owner akan memverifikasi harga dan pembelian.'
                   : (t == 'kirim_cabang'
-                      ? 'Kirim barang langsung ke cabang tanpa produksi dan tanpa ACC. Isi harga jual tiap barang; pengiriman ini tercatat sebagai bon cabang. Stok gudang langsung berkurang, cabang menekan Terima.'
+                      ? 'Kirim barang langsung ke cabang tanpa produksi dan tanpa ACC. Stok gudang langsung berkurang, cabang menekan Terima.'
                       : t == 'minta_cabang'
                       ? 'Permintaan masuk ke gudang. Jika jumlahnya jauh di atas biasanya, owner perlu ACC dulu.'
                       : (t == 'setor_jadi'
@@ -369,7 +223,6 @@ class _DocFormPageState extends State<DocFormPage> {
           const SizedBox(height: 12),
           TextField(controller: supplier, decoration: const InputDecoration(labelText: 'Nama grosir / supplier', border: OutlineInputBorder())),
           _section(s, 'Bahan yang dibeli', 'item', 'mentah', withPrice: true),
-          _bayarSection(),
         ],
         if (t == 'kirim_produksi') _section(s, 'Bahan mentah yang dikirim ke produksi', 'item', 'mentah', stockLoc: 'gudang', noSiap: true),
         if (t == 'setor_jadi') ...[
@@ -388,7 +241,7 @@ class _DocFormPageState extends State<DocFormPage> {
               items: [for (final b in s.profileBranches) DropdownMenuItem(value: b, child: Text(b))],
               onChanged: (v) => setState(() => branch = v),
             ),
-          _section(s, 'Barang yang dikirim', 'item', 'jadi', stockLoc: 'gudang', sellable: true, withSell: true),
+          _section(s, 'Barang yang dikirim', 'item', 'jadi', stockLoc: 'gudang', sellable: true),
         ],
         if (t == 'minta_cabang') _section(s, 'Barang yang diminta', 'item', 'jadi', sellable: true),
         const SizedBox(height: 14),
@@ -404,9 +257,9 @@ class _DocFormPageState extends State<DocFormPage> {
         const SizedBox(height: 14),
         FilledButton.icon(
           style: FilledButton.styleFrom(backgroundColor: green, minimumSize: const Size.fromHeight(52)),
-          onPressed: saving ? null : _submit,
+          onPressed: saving ? null : (t == 'masuk' ? _pratinjau : _submit),
           icon: saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Icon(t == 'masuk' ? Icons.fact_check_outlined : Icons.send),
-          label: Text(t == 'masuk' ? 'Pratinjau & Cek' : (t == 'minta_cabang' ? 'Kirim Permintaan' : 'Simpan & Kirim')),
+          label: Text(t == 'masuk' ? 'Pratinjau Barang Masuk' : (t == 'minta_cabang' ? 'Kirim Permintaan' : 'Simpan & Kirim')),
         ),
         const SizedBox(height: 20),
       ]),
@@ -414,224 +267,168 @@ class _DocFormPageState extends State<DocFormPage> {
   }
 }
 
-
-/// Pratinjau Barang Masuk: cocokkan tiap barang dengan belanjaan/nota, koreksi jika salah catat,
-/// baru simpan. Mengubah controller milik form secara langsung, jadi koreksi ikut ke form.
-class _MasukPreviewPage extends StatefulWidget {
+/// Pratinjau Barang Masuk: cocokkan catatan dengan barang fisik/nota, koreksi bila salah, lalu simpan.
+class _PratinjauSheet extends StatefulWidget {
   final List<_FLine> lines;
-  final TextEditingController supplier, note;
-  final String bayarInfo;
-  const _MasukPreviewPage({required this.lines, required this.supplier, required this.note, this.bayarInfo = ''});
+  final String supplier, note;
+  final void Function(_FLine) onRemove;
+  const _PratinjauSheet({required this.lines, required this.supplier, required this.note, required this.onRemove});
   @override
-  State<_MasukPreviewPage> createState() => _MasukPreviewPageState();
+  State<_PratinjauSheet> createState() => _PratinjauSheetState();
 }
 
-class _MasukPreviewPageState extends State<_MasukPreviewPage> {
-  final checked = <_FLine>{};
-  // nilai awal saat pratinjau dibuka, untuk menandai baris yang dikoreksi
-  late final Map<_FLine, String> orig = {for (final l in widget.lines) l: _sig(l)};
-  late final String origSupplier = widget.supplier.text.trim();
-
-  static String _sig(_FLine l) => '${l.qty.text.trim()}|${l.price.text.trim()}';
+class _PratinjauSheetState extends State<_PratinjauSheet> {
+  final cocok = <_FLine>{};
 
   double _q(_FLine l) => parseQty(l.qty.text) ?? 0;
   double _p(_FLine l) => parseQty(l.price.text) ?? 0;
-  double get total => widget.lines.fold(0.0, (a, l) => a + _q(l) * _p(l));
-  bool get allChecked => widget.lines.isNotEmpty && widget.lines.every(checked.contains);
+  double get total => widget.lines.fold<double>(0, (a, l) => a + _q(l) * _p(l));
 
-  Future<void> _editLine(_FLine l) async {
+  /// Peringatan bila harga jauh berbeda dari pembelian terakhir barang yang sama (mis. salah nol).
+  String? _aneh(AppState s, _FLine l) {
+    final p = _p(l);
+    if (p <= 0) return null;
+    DateTime? t;
+    double? last;
+    for (final d in s.docs) {
+      if (d.type != 'masuk' || d.status != 'diterima') continue;
+      for (final x in d.lines) {
+        if (x.itemId == l.item.id && x.price > 0 && (t == null || d.createdAt.isAfter(t))) {
+          t = d.createdAt;
+          last = x.price;
+        }
+      }
+    }
+    if (last == null) return null;
+    if (p < last * 0.2 || p > last * 5) return 'Harga jauh beda dari pembelian terakhir (${rp(last)}). Cek lagi, mungkin kurang atau kelebihan nol.';
+    return null;
+  }
+  bool get semua => widget.lines.isNotEmpty && widget.lines.every(cocok.contains);
+
+  Future<void> _koreksi(_FLine l) async {
     final q = TextEditingController(text: l.qty.text);
     final p = TextEditingController(text: l.price.text);
     String? err;
     final res = await showDialog<String>(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setD) => AlertDialog(
+      builder: (d) => StatefulBuilder(
+        builder: (d, setS) => AlertDialog(
           title: Text('Koreksi ${l.item.name}'),
           content: Column(mainAxisSize: MainAxisSize.min, children: [
             TextField(
               controller: q,
-              autofocus: true,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(labelText: 'Jumlah', suffixText: l.item.unit, border: const OutlineInputBorder()),
+              decoration: InputDecoration(labelText: 'Jumlah', suffixText: l.item.unit),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             TextField(
               controller: p,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(labelText: 'Harga per ${l.item.unit}', prefixText: 'Rp ', border: const OutlineInputBorder()),
+              decoration: InputDecoration(labelText: 'Harga satuan (per ${l.item.unit})', prefixText: 'Rp '),
             ),
-            if (err != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(err!, style: const TextStyle(color: red, fontWeight: FontWeight.w600))),
+            if (err != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(err!, style: const TextStyle(color: red))),
           ]),
-          actionsOverflowButtonSpacing: 4,
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, 'hapus'), child: const Text('Hapus bahan', style: TextStyle(color: red))),
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
+            TextButton(onPressed: () => Navigator.pop(d, 'hapus'), child: const Text('Hapus baris', style: TextStyle(color: red))),
+            TextButton(onPressed: () => Navigator.pop(d), child: const Text('Batal')),
             FilledButton(
               onPressed: () {
-                final nq = parseQty(q.text), np = parseQty(p.text);
-                if (nq == null || nq <= 0) return setD(() => err = 'Jumlah harus lebih dari 0');
-                if (np == null || np <= 0) return setD(() => err = 'Harga harus lebih dari 0');
-                Navigator.pop(ctx, 'ok');
+                final nq = parseQty(q.text);
+                final np = parseQty(p.text);
+                if (nq == null || nq <= 0) {
+                  setS(() => err = 'Jumlah harus lebih dari 0');
+                  return;
+                }
+                if (np == null || np <= 0) {
+                  setS(() => err = 'Harga harus lebih dari 0');
+                  return;
+                }
+                Navigator.pop(d, 'simpan');
               },
-              child: const Text('Terapkan'),
+              child: const Text('Simpan koreksi'),
             ),
           ],
         ),
       ),
     );
-    if (!mounted || res == null) return;
-    if (res == 'hapus') {
+    if (!mounted) return;
+    if (res == 'simpan') {
       setState(() {
-        widget.lines.remove(l);
-        checked.remove(l);
+        l.qty.text = q.text.trim();
+        l.price.text = p.text.trim();
+        cocok.remove(l); // yang dikoreksi harus dicek ulang
       });
+    } else if (res == 'hapus') {
+      widget.onRemove(l);
+      setState(() => cocok.remove(l));
       if (widget.lines.isEmpty) Navigator.pop(context, false);
-      return;
     }
-    setState(() {
-      l.qty.text = q.text.trim();
-      l.price.text = p.text.trim();
-      checked.remove(l); // yang dikoreksi harus dicek ulang
-    });
-  }
-
-  Future<void> _editSupplier() async {
-    final c = TextEditingController(text: widget.supplier.text);
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Koreksi nama grosir / supplier'),
-        content: TextField(controller: c, autofocus: true, decoration: const InputDecoration(border: OutlineInputBorder())),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, c.text.trim().isNotEmpty), child: const Text('Terapkan')),
-        ],
-      ),
-    );
-    if (ok == true && mounted) setState(() => widget.supplier.text = c.text.trim());
-  }
-
-  Widget _lineCard(AppState s, _FLine l) {
-    final q = _q(l), p = _p(l);
-    final stok = s.stockAt('gudang', l.item.id);
-    final edited = orig[l] != _sig(l);
-    final ok = checked.contains(l);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.fromLTRB(4, 8, 8, 8),
-      decoration: cardDeco(color: ok ? const Color(0xFFF0FAF3) : Colors.white),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Checkbox(value: ok, activeColor: green, onChanged: (v) => setState(() => v == true ? checked.add(l) : checked.remove(l))),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Flexible(child: Text(l.item.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15))),
-                if (edited)
-                  Container(
-                    margin: const EdgeInsets.only(left: 6),
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(color: const Color(0xFFFFF4E0), borderRadius: BorderRadius.circular(10)),
-                    child: const Text('Dikoreksi', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: orange)),
-                  ),
-              ]),
-              const SizedBox(height: 2),
-              Text('${fmtQty(q)} ${l.item.unit} × ${rp(p)}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-              Text('Subtotal ${rp(q * p)}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: navy)),
-              const SizedBox(height: 2),
-              Text('Stok gudang: ${fmtQty(stok)} → ${fmtQty(stok + q)} ${l.item.unit}', style: TextStyle(fontSize: 12, color: Colors.grey[700])),
-            ]),
-          ),
-        ),
-        TextButton.icon(
-          onPressed: () => _editLine(l),
-          icon: const Icon(Icons.edit_outlined, size: 18),
-          label: const Text('Koreksi'),
-        ),
-      ]),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final s = context.watch<AppState>();
-    final lines = widget.lines;
-    final done = lines.where(checked.contains).length;
-    final supplierEdited = origSupplier != widget.supplier.text.trim();
-    return Scaffold(
-      appBar: AppBar(title: const Text('Pratinjau Barang Masuk'), backgroundColor: navy, foregroundColor: Colors.white),
-      body: ListView(padding: const EdgeInsets.all(12), children: [
-        Container(
-          padding: const EdgeInsets.all(10),
-          decoration: cardDeco(color: const Color(0xFFFFF4E0)),
-          child: const Text(
-              'Belum tersimpan. Cocokkan tiap barang dengan belanjaan / nota grosir, lalu centang. Jika ada salah catat, tekan Koreksi. Tombol simpan aktif setelah semua barang dicentang.',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: orange)),
-        ),
-        const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
-          decoration: cardDeco(),
-          child: Row(children: [
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Grosir / supplier${supplierEdited ? ' (dikoreksi)' : ''}', style: TextStyle(fontSize: 12, color: Colors.grey[700])),
-                Text(widget.supplier.text.trim(), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-              ]),
-            ),
-            TextButton.icon(onPressed: _editSupplier, icon: const Icon(Icons.edit_outlined, size: 18), label: const Text('Koreksi')),
-          ]),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(2, 14, 2, 8),
-          child: Text('Bahan yang dibeli ($done/${lines.length} dicek)', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-        ),
-        for (final l in lines) _lineCard(s, l),
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: cardDeco(color: const Color(0xFFEAF2FF)),
-          child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Text('Total belanja (${lines.length} bahan)', style: const TextStyle(fontWeight: FontWeight.w700, color: navy)),
-            Text(rp(total), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: navy)),
-          ]),
-        ),
-        if (widget.bayarInfo.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 10),
-            child: Text('Cara bayar: ${widget.bayarInfo}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: navy)),
+    final ls = widget.lines;
+    final st = context.read<AppState>();
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Pratinjau Barang Masuk', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 2),
+          Text('Grosir: ${widget.supplier}', style: const TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 4),
+          Text('Cocokkan dengan barang fisik dan nota. Centang barang yang sudah cocok. Ada yang salah? Ketuk Koreksi pada barangnya.',
+              style: TextStyle(fontSize: 12, color: Colors.grey[700])),
+          const SizedBox(height: 8),
+          Flexible(
+            child: ListView(shrinkWrap: true, children: [
+              for (final l in ls)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 6),
+                  padding: const EdgeInsets.fromLTRB(4, 6, 8, 6),
+                  decoration: cardDeco(),
+                  child: Row(children: [
+                    Checkbox(value: cocok.contains(l), onChanged: (v) => setState(() => v == true ? cocok.add(l) : cocok.remove(l))),
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(l.item.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+                        Text('${fmtQty(_q(l))} ${l.item.unit} x ${rp(_p(l))}', style: TextStyle(fontSize: 12, color: Colors.grey[700])),
+                        Text(rp(_q(l) * _p(l)), style: const TextStyle(fontWeight: FontWeight.w800)),
+                        if (_aneh(st, l) != null) Text(_aneh(st, l)!, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: orange)),
+                      ]),
+                    ),
+                    TextButton(onPressed: () => _koreksi(l), child: const Text('Koreksi')),
+                  ]),
+                ),
+            ]),
           ),
-        if (widget.note.text.trim().isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 10),
-            child: Text('Catatan: ${widget.note.text.trim()}', style: TextStyle(fontSize: 13, color: Colors.grey[800])),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(onPressed: () => setState(() => cocok.addAll(ls)), child: const Text('Tandai semua cocok')),
           ),
-        const SizedBox(height: 12),
-      ]),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
-          child: Row(children: [
-            Expanded(
-              child: OutlinedButton(
-                style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(52)),
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Kembali ke Form'),
-              ),
-            ),
+          const Divider(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(children: [
+              const Expanded(child: Text('Total pembelian', style: TextStyle(fontWeight: FontWeight.w700))),
+              Text(rp(total), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: navy)),
+            ]),
+          ),
+          if (widget.note.isNotEmpty) Text('Catatan: ${widget.note}', style: TextStyle(fontSize: 12, color: Colors.grey[700])),
+          const SizedBox(height: 8),
+          Row(children: [
+            Expanded(child: OutlinedButton(onPressed: () => Navigator.pop(context, false), child: const Text('Kembali ke form'))),
             const SizedBox(width: 10),
             Expanded(
               flex: 2,
-              child: FilledButton.icon(
-                style: FilledButton.styleFrom(backgroundColor: green, minimumSize: const Size.fromHeight(52)),
-                onPressed: allChecked ? () => Navigator.pop(context, true) : null,
-                icon: const Icon(Icons.check_circle_outline),
-                label: Text(allChecked ? 'Simpan Barang Masuk' : 'Cek semua dulu ($done/${lines.length})'),
+              child: FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: green, minimumSize: const Size.fromHeight(48)),
+                onPressed: semua ? () => Navigator.pop(context, true) : null,
+                child: Text(semua ? 'Simpan & masuk stok' : 'Cek dulu (${cocok.length}/${ls.length})'),
               ),
             ),
           ]),
-        ),
+        ]),
       ),
     );
   }
