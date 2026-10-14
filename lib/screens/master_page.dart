@@ -11,18 +11,20 @@ class MasterPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Aturan ACC hanya untuk owner. Kepala gudang mengelola daftar barang dan kategori sendiri.
+    final owner = context.watch<AppState>().isOwner;
     return DefaultTabController(
-      length: 4,
+      length: owner ? 4 : 3,
       child: Column(children: [
         Material(
           color: Colors.white,
-          child: const TabBar(
+          child: TabBar(
             labelColor: navy,
             indicatorColor: blue,
-            tabs: [Tab(text: 'Bahan mentah'), Tab(text: 'Bahan jadi'), Tab(text: 'Kategori'), Tab(text: 'Aturan ACC')],
+            tabs: [const Tab(text: 'Bahan mentah'), const Tab(text: 'Bahan jadi'), const Tab(text: 'Kategori'), if (owner) const Tab(text: 'Aturan ACC')],
           ),
         ),
-        const Expanded(child: TabBarView(children: [_ItemsTab(kind: 'mentah'), _ItemsTab(kind: 'jadi'), _CategoryTab(), _RulesTab()])),
+        Expanded(child: TabBarView(children: [const _ItemsTab(kind: 'mentah'), const _ItemsTab(kind: 'jadi'), const _CategoryTab(), if (owner) const _RulesTab()])),
       ]),
     );
   }
@@ -154,7 +156,7 @@ class _CategoryTab extends StatelessWidget {
             child: ListTile(
               dense: true,
               title: Text(c, style: const TextStyle(fontWeight: FontWeight.w700)),
-              trailing: IconButton(icon: const Icon(Icons.delete_outline, color: red, size: 20), onPressed: () => _delete(context, s, c)),
+              trailing: s.isOwner ? IconButton(icon: const Icon(Icons.delete_outline, color: red, size: 20), onPressed: () => _delete(context, s, c)) : null,
             ),
           ),
       ]),

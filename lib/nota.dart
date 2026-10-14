@@ -90,6 +90,8 @@ NotaData buildNota(Doc d) {
       parties = [
         ['Grosir', d.supplier.isEmpty ? '-' : d.supplier],
         ['Dicatat oleh', d.createdByName],
+        if (d.bayarMode == 'tempo') ['Pembayaran', 'Tempo${d.jatuhTempo == null ? '' : ', jatuh tempo ${tgl(d.jatuhTempo!)}'}'],
+        if (d.bayarMode == 'cash') ['Pembayaran', 'Cash'],
       ];
       var total = 0.0;
       final rows = <NotaRow>[];
@@ -125,8 +127,8 @@ NotaData buildNota(Doc d) {
             '${i + 1}',
             _namaTanda(l),
             _qty(l, q),
-            l.price > 0 ? _num(l.price) : '-',
-            (l.price > 0 && q > 0) ? _num(l.price * q) : '-',
+            l.sellPrice > 0 ? _num(l.sellPrice) : '-',
+            (l.sellPrice > 0 && q > 0) ? _num(l.sellPrice * q) : '-',
           ], warn: l.kosong));
         }
         sections.add(NotaSection(

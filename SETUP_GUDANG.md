@@ -59,12 +59,55 @@ Tiap dokumen punya nota. Buka dokumen, lalu ketuk tombol "Lihat faktur/surat jal
 - Toleransi rendemen dan batas permintaan cabang bisa diubah di Master -> Aturan ACC.
 - Dokumen lama berstatus "Menunggu ACC" tetap bisa di-ACC owner.
 
+## Omzet gudang, bon cabang bernilai jual, tagihan grosir
+Jalankan `supabase_update_omzet_tagihan.sql` PALING AKHIR (setelah semua file lain, termasuk `supabase_update_hapus_barang.sql`). Aman diulang. Tidak mengganti `create_doc`/`send_doc`/`receive_doc`, jadi alur lama tidak berubah.
+
+### Harga jual ke cabang dan omzet
+- **Kirim ke Cabang**: kepala gudang mengisi **harga jual per barang** setiap kirim. Layar menampilkan modal rata-rata (dari Barang Masuk) dan estimasi untung. Harga jual boleh berbeda tiap transaksi.
+- **Permintaan Cabang**: saat gudang menekan Kirim, muncul isian harga jual per barang. Barang yang stoknya kosong tidak wajib berharga.
+- Pengiriman lama (sebelum update ini) belum punya harga jual. Buka dokumennya, tekan **Atur harga jual** (hanya bisa selama belum ada pembayaran).
+- **Omzet** = harga jual x jumlah diterima cabang (belum diterima: jumlah dikirim). **Keuntungan** = omzet - modal. Modal = harga beli rata-rata yang dikunci saat barang dikirim (kolom `unit_price` lama).
+- Beranda gudang dan owner punya kartu **Omzet gudang bulan ini**; ketuk untuk rincian per periode, per cabang, per barang, dan per transaksi bertanggal.
+
+### Bon cabang dan pelunasan
+- Bon cabang kini bernilai harga jual. Tiap bon punya status: Belum lunas, Dicicil, Lunas.
+- **Catat pelunasan** dilakukan kepala gudang atau owner (gudang yang menerima uangnya). Boleh dicicil, pilih transfer atau cash, tanggal bayar, catatan. Pelunasan baru bisa dicatat setelah cabang menekan Terima.
+- Riwayat pelunasan tampil di detail bon. Salah catat hanya bisa dibatalkan owner (tombol panah balik), tercatat di Riwayat dokumen.
+- Akun cabang bisa melihat bon, status, dan riwayat pelunasan cabangnya sendiri.
+
+### Nota grosir tempo dan tagihan supplier
+- Di **Barang Masuk**, kepala gudang wajib memilih cara bayar: **Cash** (langsung lunas) atau **Tempo** (isi tanggal jatuh tempo).
+- Nota tempo masuk ke **Tagihan grosir** (kartu di Beranda gudang dan owner). Kartu berubah oranye/merah bila ada nota yang jatuh temponya tinggal 3 hari atau kurang, atau sudah lewat. Ini pengingat di dalam aplikasi (bukan notifikasi push ke HP).
+- Tombol **Sudah dibayar**: catat jumlah (bawaan = sisa penuh, boleh cicil), transfer/cash, tanggal. Riwayat pembayaran ada di detail nota dan di tab Riwayat bayar pada halaman Tagihan grosir.
+- Dokumen Barang Masuk lama dianggap sudah lunas. Bila ada yang sebenarnya belum dibayar, buka dokumennya, tekan **Atur cara bayar**, pilih Tempo.
+
+### Daftar barang diisi gudang sendiri
+- Akun gudang kini punya tab **Barang** (sebelumnya hanya owner punya Master): tambah, ubah, hapus barang, dan tambah kategori. Gabung barang dan Aturan ACC tetap khusus owner.
+- Barang baru yang ditambah gudang otomatis berjalur "diolah / langsung ke cabang", jadi bisa langsung dikirim ke cabang.
+- Opsional: `supabase_bersihkan_master_bawaan.sql` menghapus 51 barang bawaan dari master data yang belum pernah dipakai transaksi. Jalankan bagian preview dulu, cek daftarnya, baru aktifkan bagian hapus.
+
+### Harga jual standar dan bakso hasil produksi tanpa harga
+Jalankan `supabase_update_harga_standar.sql` SETELAH `supabase_update_omzet_tagihan.sql`. Aman diulang. Jangan menjalankan ulang file omzet_tagihan sesudahnya (fungsi `create_kirim_cabang` akan kembali ke versi lama).
+- **Harga jual standar**: di tab Barang/Master, ketuk barang, isi *Harga jual standar ke cabang*. Nilai ini otomatis terisi di kolom harga saat **Kirim ke Cabang** dan saat menekan **Kirim** pada Permintaan Cabang. Masih bisa diubah tiap kiriman. Bila belum diatur, isian awal memakai harga jual terakhir barang itu.
+- **Bahan jadi (bakso hasil produksi) boleh tanpa harga**: kolom harga boleh dikosongkan, pengiriman tetap jalan. Isi menyusul lewat tombol **Atur harga jual** di detail dokumen (hanya selama belum ada pembayaran bon). Barang selain bahan jadi tetap wajib berharga jual.
+- Kiriman yang belum berharga belum ikut omzet dan bon. Kartu **Omzet gudang** di Beranda menampilkan pengingat berwarna oranye selama masih ada.
+
+### Satuan ganda: gudang dus, cabang botol (minuman)
+Jalankan `supabase_update_satuan_ecer.sql` SETELAH `supabase_update_kirim_cabang.sql` dan `supabase_update_stok_kosong.sql`. Aman diulang. Jangan menjalankan ulang `supabase_update_kirim_cabang.sql` sesudahnya (fungsi `receive_doc` akan kembali ke versi lama).
+- Satu nama barang saja, mis. "Air Mineral 600 ml" dengan satuan **dus**. Di tab Barang, ketuk barang, isi **Satuan eceran di cabang** (mis. `botol`) dan **Isi per dus** (mis. `24`). Isi per dus diatur per barang. Kolom ini muncul untuk barang siap jual dan bahan jadi.
+- **Gudang dan semua dokumen tetap dalam dus**: Barang Masuk, Kirim ke Cabang, Permintaan Cabang, bon, omzet, dan tagihan. Harga beli dan harga jual per dus.
+- **Stok cabang dalam botol**: saat cabang menekan Terima, stok cabang bertambah jumlah diterima x isi per dus (2 dus = 48 botol). Catat Penjualan, stok cabang, dan Rekap (Masuk, Terjual, Sisa) memakai botol. Detail dokumen menampilkan baris "Di cabang: 48 botol".
+- Bila barang sudah punya stok di cabang (masih dalam dus) saat satuan eceran pertama kali diatur, stok itu otomatis dikonversi ke botol dan tercatat sebagai koreksi stok. Sebaiknya atur satuan eceran sebelum barang itu dipakai di cabang.
+- Satuan eceran tidak bisa dihapus selama masih ada stok di cabang. Koreksi stok owner untuk lokasi cabang memakai satuan botol, untuk gudang memakai dus.
+- Hindari Gabung barang antara barang bersatuan eceran dan yang tidak (stok cabang bisa tercampur satuan).
+
 ## Aturan penting
 - Stok pengirim berkurang saat dikirim; stok penerima bertambah hanya setelah penerima menekan Terima.
 - Jumlah diterima bisa lebih kecil dari yang dikirim; selisih tercatat dan ditandai merah untuk owner.
 - Semua aksi tercatat (siapa, kapan) di bagian Riwayat tiap dokumen.
 - Daftar bahan baru bisa ditambah langsung saat membuat dokumen; owner bisa mengubah/menonaktifkan di tab Master.
 - Aplikasi belum punya ikon khusus (memakai ikon bawaan). Tambahkan folder `android_res/` bila sudah ada.
+- Aplikasi memuat 400 dokumen terbaru; nota tempo yang jauh lebih lama dari itu tidak akan tampil di Tagihan grosir.
 - Aplikasi belum punya fitur lupa password; reset lewat Supabase (Authentication -> Users).
 
 ### Nilai stok gudang (khusus owner)
@@ -101,7 +144,7 @@ Jalankan `supabase_update_stok_kosong.sql` SESUDAH `supabase_update_kirim_cabang
 - Permintaan Cabang yang stok gudangnya kurang/kosong tetap bisa dikirim. Barang kosong dikirim 0 dan ditandai KOSONG; barang kurang dikirim sebesar stok dan ditandai STOK KURANG. Jumlah yang diminta tetap tersimpan dan tampil di detail dokumen dan nota.
 - Stok gudang hanya berkurang sebesar yang benar-benar dikirim. Jenis dokumen lain tetap menolak bila stok kurang.
 
-### Pratinjau Barang Masuk dan koreksi harga
-Barang Masuk tidak langsung tersimpan: tombol *Pratinjau Barang Masuk* menampilkan daftar untuk dicocokkan dengan barang fisik/nota (centang tiap barang, *Koreksi* untuk mengubah jumlah/harga atau menghapus baris). Harga yang jauh beda dari pembelian terakhir diberi peringatan. Fitur ini hanya perubahan aplikasi, tanpa SQL.
+### Peringatan harga janggal dan koreksi harga Barang Masuk
+Pratinjau Barang Masuk memberi peringatan oranye bila harga satuan jauh beda dari pembelian terakhir barang yang sama (kurang dari 20% atau lebih dari 5x, mis. salah nol). Bagian ini hanya perubahan aplikasi, tanpa SQL.
 
-Jalankan `supabase_update_koreksi_harga.sql` (aman diulang). Barang Masuk yang sudah tersimpan punya tombol *Koreksi harga* (owner kapan saja; kepala gudang selama belum diverifikasi owner). Alasan wajib, harga lama dan baru tercatat di Riwayat, harga rata-rata, nilai stok, dan harga bon cabang ikut dihitung ulang. Jumlah/stok tidak berubah.
+Jalankan `supabase_update_koreksi_harga.sql` (SETELAH `supabase_update_nilai_periode.sql` karena memakai `_harga_rata`; aman diulang, tidak mengganti fungsi lama). Barang Masuk yang sudah tersimpan punya tombol *Koreksi harga* (owner kapan saja; kepala gudang selama belum diverifikasi owner). Alasan wajib, harga lama dan baru tercatat di Riwayat, harga rata-rata, nilai stok, dan harga bon cabang ikut dihitung ulang. Jumlah dan stok tidak berubah. Total nota grosir tempo ikut berubah; pembayaran yang sudah tercatat tidak diubah.

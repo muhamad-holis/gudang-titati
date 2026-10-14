@@ -150,7 +150,8 @@ Future<Item?> addItemDialog(BuildContext context, AppState s, {String? kind}) {
   final unit = TextEditingController(text: 'kg');
   var k = kind ?? 'mentah';
   var siap = false;
-  var jalur = 'olah';
+  // barang yang ditambah gudang langsung bisa dikirim ke produksi maupun ke cabang
+  var jalur = s.role == 'gudang' ? 'dua' : 'olah';
   final cat = TextEditingController(text: k == 'jadi' ? 'Bahan jadi' : '');
   String? err;
   var saving = false;
@@ -276,6 +277,9 @@ Future<bool?> editItemDialog(BuildContext context, AppState s, Item it) {
   var jalur = it.jalur;
   final rend = TextEditingController(text: it.rendemenStd == null ? '' : fmtQty(it.rendemenStd!));
   final minStok = TextEditingController(text: it.stokMin > 0 ? fmtQty(it.stokMin) : '');
+  final unitEcer = TextEditingController(text: it.unitEcer);
+  final isiEcer = TextEditingController(text: it.punyaEcer ? fmtQty(it.isiEcer) : '');
+  final hargaStd = TextEditingController(text: it.sellPriceDefault > 0 ? it.sellPriceDefault.round().toString() : '');
   String? err;
   var saving = false;
   return showDialog<bool>(
@@ -303,6 +307,48 @@ Future<bool?> editItemDialog(BuildContext context, AppState s, Item it) {
                 helperMaxLines: 3,
               ),
             ),
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: TextField(
+                controller: hargaStd,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  labelText: 'Harga jual standar ke cabang (opsional)',
+                  prefixText: 'Rp ',
+                  suffixText: '/ ${it.unit}',
+                  helperText: 'Jadi isian awal saat kirim ke cabang, masih bisa diubah tiap kiriman. Kosong = isi manual.',
+                  helperMaxLines: 3,
+                ),
+              ),
+            ),
+            if (it.kind == 'jadi' || siap) ...[
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: TextField(
+                  controller: unitEcer,
+                  onChanged: (_) => setS(() {}),
+                  decoration: InputDecoration(
+                    labelText: 'Satuan eceran di cabang (opsional)',
+                    helperText: 'Mis. botol, bila gudang mencatat dalam ${unit.text.trim().isEmpty ? it.unit : unit.text.trim()} tetapi cabang menjual ecer. Kosong = tanpa konversi.',
+                    helperMaxLines: 3,
+                  ),
+                ),
+              ),
+              if (unitEcer.text.trim().isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: TextField(
+                    controller: isiEcer,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      labelText: 'Isi per ${unit.text.trim().isEmpty ? it.unit : unit.text.trim()}',
+                      suffixText: unitEcer.text.trim(),
+                      helperText: 'Mis. 24 botol per dus. Stok cabang otomatis dihitung dalam ${unitEcer.text.trim()} saat cabang menekan Terima.',
+                      helperMaxLines: 3,
+                    ),
+                  ),
+                ),
+            ],
             if (it.kind == 'jadi')
               Padding(
                 padding: const EdgeInsets.only(top: 6),
@@ -326,7 +372,7 @@ Future<bool?> editItemDialog(BuildContext context, AppState s, Item it) {
               ),
             if (it.kind == 'mentah' && !siap) _jalurPicker(jalur, (v) => setS(() => jalur = v)),
             if (err != null) Text(err!, style: const TextStyle(color: red)),
-            if (s.isOwner) ...[
+            if (s.isOwner || s.role == 'gudang') ...[
               const Divider(height: 24),
               Wrap(spacing: 8, children: [
                 TextButton.icon(
@@ -359,7 +405,8 @@ Future<bool?> editItemDialog(BuildContext context, AppState s, Item it) {
                   icon: const Icon(Icons.delete_outline, color: red, size: 18),
                   label: const Text('Hapus', style: TextStyle(color: red)),
                 ),
-                TextButton.icon(
+                if (s.isOwner)
+                  TextButton.icon(
                   onPressed: saving
                       ? null
                       : () async {
@@ -422,8 +469,29 @@ Future<bool?> editItemDialog(BuildContext context, AppState s, Item it) {
                       }
                       newMin = m;
                     }
+                    var newHarga = 0.0;
+                    if (hargaStd.text.trim().isNotEmpty) {
+                      final h = parseQty(hargaStd.text);
+                      if (h == null || h < 0) {
+                        setS(() => err = 'Harga jual standar harus berupa angka 0 atau lebih');
+                        return;
+                      }
+                      newHarga = h;
+                    }
+                    final ecerUnit = (it.kind == 'jadi' || siap) ? unitEcer.text.trim() : it.unitEcer;
+                    var ecerIsi = 1.0;
+                    if (ecerUnit.isNotEmpty) {
+                      final v = parseQty(isiEcer.text);
+                      if (v == null || v <= 1 || v != v.truncateToDouble()) {
+                        setS(() => err = 'Isi per ${unit.text.trim()} harus bilangan bulat lebih dari 1');
+                        return;
+                      }
+                      ecerIsi = v;
+                    }
+                    final ecerBerubah = ecerUnit != it.unitEcer || (ecerUnit.isNotEmpty && ecerIsi != it.isiEcer);
                     setS(() => saving = true);
                     try {
+                      if (ecerBerubah) await s.aturSatuanEcer(it.id, ecerUnit, ecerIsi);
                       await s.updateItem(it.id,
                           name: name.text,
                           category: cat.text,
@@ -434,6 +502,7 @@ Future<bool?> editItemDialog(BuildContext context, AppState s, Item it) {
                           setRendemen: rendChanged,
                           stokMin: newMin,
                           setStokMin: newMin != it.stokMin,
+                          sellPriceDefault: newHarga != it.sellPriceDefault ? newHarga : null,
                           jalur: (it.kind == 'mentah' && jalur != it.jalur) ? jalur : null);
                       if (d.mounted) Navigator.pop(d, true);
                     } catch (e) {
